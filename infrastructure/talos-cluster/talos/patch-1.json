@@ -1,0 +1,48 @@
+[
+  {
+    "op": "add",
+    "path": "/machine/network/hostname",
+    "value": "kube-master-dell-1"
+  },
+  {
+    "op": "add",
+    "path": "/machine/network/interfaces",
+    "value": [
+      {
+        "deviceSelector": {
+          "busPath": "0*"
+        },
+        "dhcp": false,
+        "addresses": ["192.168.86.204/24"],
+        "mtu": 1500,
+        "routes": [
+          {
+            "network": "0.0.0.0/0",
+            "gateway": "192.168.86.1"
+          }
+        ],
+        "vip": {
+          "ip": "192.168.86.220"
+        }
+      }
+    ]
+  },
+  {
+    "op": "add",
+    "path": "/machine/certSANs",
+    "value": [
+      "192.168.86.220",
+      "192.168.86.204",
+      "127.0.0.1"
+    ]
+  },
+  {
+    "op": "add",
+    "path": "/cluster/apiServer/certSANs",
+    "value": [
+      "192.168.86.220",
+      "192.168.86.204",
+      "127.0.0.1"
+    ]
+  }
+]

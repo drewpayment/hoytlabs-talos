@@ -1,0 +1,27 @@
+{
+  "name": "hoytlabs-talos",
+  "version": "1.0.0",
+  "description": "Talos Kubernetes cluster deployment with Pulumi",
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "setup": "cd ../.. && ./scripts/setup.sh"
+  },
+  "keywords": [
+    "pulumi",
+    "talos",
+    "kubernetes",
+    "cilium"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@pulumi/pulumi": "^3.167.0",
+    "@pulumi/command": "^1.0.3",
+    "@pulumi/tls": "^5.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "typescript": "^5.8.3"
+  }
+}
