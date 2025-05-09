@@ -47,3 +47,4 @@ controlplane-*.yaml
 secrets.yaml
 kubeconfig
 talosconfig
+infrastructure/talos-cluster/talos

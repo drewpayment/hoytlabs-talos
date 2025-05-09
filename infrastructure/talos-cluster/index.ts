@@ -8,23 +8,36 @@ const nodeIps = config.requireObject<string[]>("nodeIps");
 const vip = config.get("vip");
 const talosctlPath = config.get("talosctlPath") || "talosctl";
 const talosOutputDir = config.get("talosOutputDir") || "./talos";
+const nodeConfig = config.requireObject<Array<{
+  ip: string;
+  hostname: string;
+  filename: string;
+  deviceSelector: { busPath: string };
+}>>('nodeConfig');
+const machine = config.requireObject<{
+  install: {
+    image: string;
+  };
+}>('machine');
+const kubernetes = config.get("kubernetes");
+const machineInstallImage = config.requireObject<any>("machine").install.image;
 
 // Make sure the output directory exists
 const ensureOutputDir = new command.local.Command("ensure-output-dir", {
-    create: `mkdir -p ${talosOutputDir}`,
+  create: `mkdir -p ${talosOutputDir}`,
 });
 
 // Generate secrets once and use for all nodes
 const talosSecrets = new command.local.Command("generate-talos-secrets", {
-    create: pulumi.interpolate`
+  create: pulumi.interpolate`
     ${talosctlPath} gen secrets -o ${talosOutputDir}/secrets.yaml --force
     `,
-    triggers: [ensureOutputDir.id]
+  triggers: [ensureOutputDir.id]
 });
 
 // Generate the talosconfig file
 const talosConfigFile = new command.local.Command("generate-talosconfig", {
-    create: pulumi.interpolate`
+  create: pulumi.interpolate`
     # Check if secrets file exists
     while [ ! -f "${talosOutputDir}/secrets.yaml" ]; do
         echo "Waiting for secrets file..."
@@ -38,45 +51,34 @@ const talosConfigFile = new command.local.Command("generate-talosconfig", {
     --force \
     hoytlabs-cluster https://${vip}:6443
     `,
-    triggers: [talosSecrets.id]
+  triggers: [talosSecrets.id]
 });
 
-// Configuration for each node
-const nodeConfig = [
-    { 
-        ip: '192.168.86.200', 
-        hostname: 'kube-master-msi-1', 
-        filename: 'controlplane-msi.yaml',
-        deviceSelector: { busPath: "0*" }
-    },
-    { 
-        ip: '192.168.86.204', 
-        hostname: 'kube-master-dell-1', 
-        filename: 'controlplane-dell.yaml',
-        deviceSelector: { busPath: "0*" }
-    },  
-    { 
-        ip: '192.168.86.201', 
-        hostname: 'kube-master-opti-1', 
-        filename: 'controlplane-opti.yaml',
-        deviceSelector: { busPath: "0*" }
-    }
-];
-
 const generateNodeConfigs = new command.local.Command("generate-node-configs", {
-    create: pulumi.interpolate`
+  create: pulumi.interpolate`
     # Wait for secrets file to be fully created
     if [ ! -f "${talosOutputDir}/secrets.yaml" ]; then
         echo "Error: Secrets file not found. This command depends on secrets generation."
         exit 1
     fi
     
+    # Extract versions from config
+    k8s_version="${kubernetes}"
+    talos_image="${machineInstallImage}"
+    echo "Using Kubernetes version: $k8s_version"
+    echo "Using Talos image: $talos_image"
+    
+    # Create a JSON file with the nodeConfig data to access in the shell
+    cat > ${talosOutputDir}/node-config.json << EOF
+${JSON.stringify(nodeConfig)}
+EOF
+    
     # Generate configs for each node with specific patches
     for i in 0 1 2; do
-        ip=$(echo '${JSON.stringify(nodeConfig)}' | jq -r ".[$i].ip")
-        hostname=$(echo '${JSON.stringify(nodeConfig)}' | jq -r ".[$i].hostname")
-        filename=$(echo '${JSON.stringify(nodeConfig)}' | jq -r ".[$i].filename")
-        busPath=$(echo '${JSON.stringify(nodeConfig)}' | jq -r ".[$i].deviceSelector.busPath")
+        ip=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].ip")
+        hostname=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].hostname")
+        filename=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].filename")
+        busPath=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].deviceSelector.busPath")
         
         # Create node-specific patch file
         cat > ${talosOutputDir}/patch-$i.json << EOF
@@ -119,6 +121,11 @@ const generateNodeConfigs = new command.local.Command("generate-node-configs", {
     ]
   },
   {
+    "op": "add", 
+    "path": "/machine/install/image",
+    "value": "$talos_image"
+  },
+  {
     "op": "add",
     "path": "/cluster/apiServer/certSANs",
     "value": [
@@ -135,6 +142,7 @@ EOF
           --with-secrets ${talosOutputDir}/secrets.yaml \
           --config-patch-control-plane '[{"op": "add", "path": "/cluster/allowSchedulingOnControlPlanes", "value": true}]' \
           --config-patch-control-plane @${talosOutputDir}/patch-$i.json \
+          --kubernetes-version $k8s_version \
           --output ${talosOutputDir}/$filename \
           --output-types controlplane \
           --force \
@@ -143,12 +151,12 @@ EOF
         echo "Generated $filename for $hostname ($ip)"
     done
     `,
-    triggers: [talosConfigFile.id]
+  triggers: [talosConfigFile.id]
 });
 
 // Configure talosctl endpoints using the generated files
 const configureEndpoints = new command.local.Command("configure-endpoints", {
-    create: pulumi.interpolate`
+  create: pulumi.interpolate`
     # Ensure config files exist
     for file in controlplane-dell.yaml controlplane-msi.yaml controlplane-opti.yaml; do
         if [ ! -f "$file" ]; then
@@ -161,23 +169,23 @@ const configureEndpoints = new command.local.Command("configure-endpoints", {
     ${talosctlPath} config endpoints ${nodeIps.join(" ")}
     ${talosctlPath} config nodes ${nodeIps.join(" ")}
     `,
-    triggers: [generateNodeConfigs.id]
+  triggers: [generateNodeConfigs.id]
 });
 
 // Apply configurations to all nodes
-const applyConfigs = nodeConfig.map((node, i) => 
-    new command.local.Command(`apply-controlplane-config-${i}`, {
-        create: pulumi.interpolate`
+const applyConfigs = nodeConfig.map((node, i) =>
+  new command.local.Command(`apply-controlplane-config-${i}`, {
+    create: pulumi.interpolate`
         export TALOSCONFIG=${talosOutputDir}/talosconfig
         ${talosctlPath} apply-config --insecure --nodes ${node.ip} --file ${talosOutputDir}/${node.filename}
         `,
-        triggers: [configureEndpoints.id]
-    })
+    triggers: [configureEndpoints.id]
+  })
 );
 
 // First, add a command to bootstrap the cluster
 const bootstrapCluster = new command.local.Command("bootstrap-cluster", {
-    create: pulumi.interpolate`
+  create: pulumi.interpolate`
     export TALOSCONFIG=${talosOutputDir}/talosconfig
     
     echo "Bootstrapping cluster on first node (${nodeIps[0]})..."
@@ -196,13 +204,13 @@ const bootstrapCluster = new command.local.Command("bootstrap-cluster", {
         sleep 10
     done
     `,
-    // Run after all configs are applied
-    triggers: applyConfigs.map(cmd => cmd.id)
+  // Run after all configs are applied
+  triggers: applyConfigs.map(cmd => cmd.id)
 });
 
 // Then wait for all nodes to join
 const waitForNodes = new command.local.Command("wait-for-nodes", {
-    create: pulumi.interpolate`
+  create: pulumi.interpolate`
     export TALOSCONFIG=${talosOutputDir}/talosconfig
     
     echo "Waiting for all nodes to be ready..."
@@ -217,12 +225,12 @@ const waitForNodes = new command.local.Command("wait-for-nodes", {
         ${talosctlPath} get members --nodes $ip
     done
     `,
-    triggers: [bootstrapCluster.id]
+  triggers: [bootstrapCluster.id]
 });
 
 // Get the kubeconfig with improved error handling
 const kubeconfig = new command.local.Command("get-kubeconfig", {
-    create: pulumi.interpolate`
+  create: pulumi.interpolate`
     # Save talosconfig for reference
     TALOSCONFIG=${talosOutputDir}/talosconfig
     
@@ -238,39 +246,44 @@ const kubeconfig = new command.local.Command("get-kubeconfig", {
         exit 1
     fi
     `,
-    triggers: [waitForNodes.id]
+  triggers: [waitForNodes.id]
 });
 
-// Deploy Cilium CNI after kubeconfig is available
-const deployCilium = new command.local.Command("deploy-cilium", {
-    create: pulumi.interpolate`
-    export KUBECONFIG=${talosOutputDir}/kubeconfig
-    
-    # Check if Cilium is already installed
-    if ! kubectl get pods -n kube-system -l k8s-app=cilium 2>/dev/null | grep -q Running; then
-        echo "Installing Cilium CNI..."
-        
-        # Install Cilium using Helm
-        helm repo add cilium https://helm.cilium.io/
-        helm repo update
-        
-        helm install cilium cilium/cilium --version 1.14.3 \\
-            --namespace kube-system \\
-            --set kubeProxyReplacement=strict \\
-            --set autoDirectNodeRoutes=true \\
-            --set ipam.mode=kubernetes
-        
-        echo "Waiting for Cilium to be ready..."
-        kubectl -n kube-system wait --for=condition=ready pod -l k8s-app=cilium --timeout=300s
-        
-        echo "Cilium installed successfully"
-    else
-        echo "Cilium is already installed"
-    fi
-    `,
+const ciliumInstall = new command.local.Command("install-cilium", {
+  create: pulumi.interpolate`
+  export KUBECONFIG=${talosOutputDir}/kubeconfig
+  
+  # Add permissive PSA labels to kube-system
+  kubectl label --overwrite namespace kube-system \
+    pod-security.kubernetes.io/enforce=privileged \
+    pod-security.kubernetes.io/audit=privileged \
+    pod-security.kubernetes.io/warn=privileged
+  
+  # Install Cilium using Helm CLI with Talos-specific settings
+  helm repo add cilium https://helm.cilium.io/
+  helm repo update
+  
+  helm upgrade --install cilium cilium/cilium \
+    --version 1.17.3 \
+    --namespace kube-system \
+    --set ipam.mode=kubernetes \
+    --set kubeProxyReplacement=false \
+    --set securityContext.capabilities.ciliumAgent="{CHOWN,KILL,NET_ADMIN,NET_RAW,IPC_LOCK,SYS_ADMIN,SYS_RESOURCE,DAC_OVERRIDE,FOWNER,SETGID,SETUID}" \
+    --set securityContext.capabilities.cleanCiliumState="{NET_ADMIN,SYS_ADMIN,SYS_RESOURCE}" \
+    --set cgroup.autoMount.enabled=false \
+    --set cgroup.hostRoot=/sys/fs/cgroup \
+    --set apparmor.enabled=false \
+    --set enableCriticalPriorityClass=false \
+    --set priorityClassName=""
+  
+  # Verify installation
+  kubectl -n kube-system get pods -l k8s-app=cilium
+  `,
+  triggers: [kubeconfig.id],
 });
 
 // Export the necessary information
 export const talosconfigPath = `${talosOutputDir}/talosconfig`;
 export const kubeconfigPath = `${talosOutputDir}/kubeconfig`;
 export const clusterEndpoint = `https://${vip}:6443`;
+// export const ciliumStatus = ciliumChart.ready;

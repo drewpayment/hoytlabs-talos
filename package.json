@@ -1,6 +1,5 @@
 {
   "name": "hoytlabs-talos",
-  "module": "index.ts",
   "type": "module",
   "private": true,
   "scripts": {
@@ -13,7 +12,5 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "@pulumi/tls": "^5.2.0",
-    "pulumi": "^0.0.1"
   }
 }
