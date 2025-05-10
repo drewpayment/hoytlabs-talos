@@ -48,3 +48,4 @@ secrets.yaml
 kubeconfig
 talosconfig
 infrastructure/talos-cluster/talos
+key.txt

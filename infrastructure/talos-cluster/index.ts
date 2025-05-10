@@ -1,6 +1,7 @@
 // Pulumi program to deploy a 3-node Talos Kubernetes cluster
 import * as pulumi from "@pulumi/pulumi";
 import * as command from "@pulumi/command";
+import * as k8s from '@pulumi/kubernetes';
 
 // Configuration
 const config = new pulumi.Config();
@@ -14,13 +15,9 @@ const nodeConfig = config.requireObject<Array<{
   filename: string;
   deviceSelector: { busPath: string };
 }>>('nodeConfig');
-const machine = config.requireObject<{
-  install: {
-    image: string;
-  };
-}>('machine');
 const kubernetes = config.get("kubernetes");
 const machineInstallImage = config.requireObject<any>("machine").install.image;
+const cluster = config.require("cluster");
 
 // Make sure the output directory exists
 const ensureOutputDir = new command.local.Command("ensure-output-dir", {
@@ -49,7 +46,7 @@ const talosConfigFile = new command.local.Command("generate-talosconfig", {
     --output ${talosOutputDir}/talosconfig \
     --output-types talosconfig \
     --force \
-    hoytlabs-cluster https://${vip}:6443
+    ${cluster} https://${vip}:6443
     `,
   triggers: [talosSecrets.id]
 });
@@ -146,7 +143,7 @@ EOF
           --output ${talosOutputDir}/$filename \
           --output-types controlplane \
           --force \
-          hoytlabs-cluster https://${vip}:6443
+          ${cluster} https://${vip}:6443
         
         echo "Generated $filename for $hostname ($ip)"
     done
@@ -232,7 +229,7 @@ const waitForNodes = new command.local.Command("wait-for-nodes", {
 const kubeconfig = new command.local.Command("get-kubeconfig", {
   create: pulumi.interpolate`
     # Save talosconfig for reference
-    TALOSCONFIG=${talosOutputDir}/talosconfig
+    export TALOSCONFIG=${talosOutputDir}/talosconfig
     
     # Try to get kubeconfig directly using the standard method
     echo "Retrieving kubeconfig..."
@@ -282,8 +279,56 @@ const ciliumInstall = new command.local.Command("install-cilium", {
   triggers: [kubeconfig.id],
 });
 
+const k8sProvider = new k8s.Provider("talos-k8s", {
+  kubeconfig: pulumi.interpolate`${process.cwd()}/${talosOutputDir}/kubeconfig`,
+}, { dependsOn: [kubeconfig] });
+
+// First set up the namespace with appropriate security permissions
+const argocdNamespace = new k8s.core.v1.Namespace("argocd", {
+  metadata: {
+    name: "argocd",
+    labels: {
+      "pod-security.kubernetes.io/enforce": "privileged",
+      "pod-security.kubernetes.io/audit": "privileged",
+      "pod-security.kubernetes.io/warn": "privileged"
+    }
+  }
+}, { provider: k8sProvider });
+
+// Deploy ArgoCD using Helm
+const argocdChart = new k8s.helm.v3.Chart("argocd", {
+  chart: "argo-cd",
+  version: "8.0.0",  // Check for the latest version
+  fetchOpts: {
+    repo: "https://argoproj.github.io/argo-helm",
+  },
+  namespace: "argocd",
+  values: {
+    global: {
+      securityContext: {
+        // Avoid running as root when possible
+        runAsNonRoot: true,
+      }
+    },
+    server: {
+      extraArgs: ["--insecure"], // If you're setting up ingress separately
+    },
+    // Disable AppArmor annotations
+    controller: {
+      podAnnotations: {
+        "container.apparmor.security.beta.kubernetes.io/application-controller": "unconfined"
+      }
+    },
+    dex: {
+      enabled: false // Simplify the installation
+    }
+  }
+}, { provider: k8sProvider, dependsOn: [argocdNamespace] });
+
 // Export the necessary information
 export const talosconfigPath = `${talosOutputDir}/talosconfig`;
 export const kubeconfigPath = `${talosOutputDir}/kubeconfig`;
 export const clusterEndpoint = `https://${vip}:6443`;
-// export const ciliumStatus = ciliumChart.ready;
+
+export const argocdUrl = pulumi.interpolate`https://${vip}/argocd`;
+export const argocdAdminPassword = pulumi.secret(pulumi.interpolate`kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d`);

@@ -1,4 +1,5 @@
 config:
+  cluster: hoytlabs-cluster
   hoytlabs-talos:nodeIps:
     - "192.168.86.200"
     - "192.168.86.204" 
