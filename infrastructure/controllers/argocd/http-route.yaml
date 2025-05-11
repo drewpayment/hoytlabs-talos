@@ -5,9 +5,7 @@ metadata:
   namespace: argocd
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io/v1
-      kind: Gateway
-      name: gateway-internal
+    - name: gateway-internal
       namespace: gateway
   hostnames:
     - "argocd.hoytlabs.app"
