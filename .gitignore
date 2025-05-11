@@ -50,3 +50,4 @@ talosconfig
 infrastructure/talos-cluster/talos
 key.txt
 tunnel-creds.json
+infrastructure/controllers/argocd/charts
