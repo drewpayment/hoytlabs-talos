@@ -8,7 +8,7 @@ configs:
       kustomize-build-with-helm:
         generate:
           command: ["sh", "-c"]
-          args: ["kustomize build --enable-helm"]
+          args: ["kustomize build --enable-helm ."]
   params:
     server.insecure: true
 
