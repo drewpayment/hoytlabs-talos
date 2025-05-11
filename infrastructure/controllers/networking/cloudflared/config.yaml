@@ -31,7 +31,6 @@ ingress:
     originRequest:
       noTLSVerify: true
       originServerName: "*.hoytlabs.app"
-      logHeaders: true
       headers:
         - name: CF-Connecting-IP
         - name: X-Real-IP
@@ -60,7 +59,6 @@ ingress:
     originRequest:
       noTLSVerify: true
       originServerName: hoytlabs.app
-      logHeaders: true
       headers:
         - name: CF-Connecting-IP
         - name: X-Real-IP

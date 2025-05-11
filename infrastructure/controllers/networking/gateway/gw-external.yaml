@@ -22,7 +22,7 @@ spec:
       hostname: "*.hoytlabs.app"
       tls:
         certificateRefs:
-          - name: cert-hoytlabs
+          - name: cert-hoytlabs-sf8wl
             kind: Secret
             group: "" # required
       allowedRoutes:
