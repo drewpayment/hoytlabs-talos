@@ -1,0 +1,20 @@
+
+driver:
+  name: nfs.csi.k8s.io
+  replicas: 2
+
+storageClasses:
+- name: tank-db
+  defaultClass: false
+  parameters:
+    server: 192.168.86.44
+    share: /mnt/tank/db
+  mountOptions:
+    - nfsvers=4.1
+
+csiDriver:
+  name: nfs.csi.k8s.io
+  attachRequired: false
+  fsGroupPolicy: File
+
+kubeletDir: /var/lib/kubelet

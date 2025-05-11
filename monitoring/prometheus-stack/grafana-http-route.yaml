@@ -1,23 +1,19 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: argocd
-  namespace: argocd
+  name: grafana
+  namespace: monitoring
 spec:
   parentRefs:
-    - group: gateway.networking.k8s.io/v1
-      kind: Gateway
-      name: gateway-internal
+    - name: gateway-internal
       namespace: gateway
   hostnames:
-    - "argocd.hoytlabs.app"
+    - grafana.vanillax.xyz
   rules:
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
-        - group: ''
-          kind: Service
-          name: argocd-server
+        - name: kube-prometheus-stack-grafana
           port: 80
