@@ -1,0 +1,9 @@
+originRequest:
+  originServerName: "external.hoytlabs.app"
+
+ingress:
+  - hostname: "hoytlabs.app"
+    service: https://ingress-nginx-external-controller.network.svc.cluster.local:443
+  - hostname: "*.hoytlabs.app"
+    service: https://ingress-nginx-external-controller.network.svc.cluster.local:443
+  - service: http_status:404
