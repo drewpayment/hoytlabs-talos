@@ -6,4 +6,4 @@ spec:
   endpoints:
     - dnsName: "external.hoytlabs.app"
       recordType: CNAME
-      targets: ["TUNNEL_ID_PLACEHOLDER.cfargotunnel.com"]
+      targets: ["303bd20b-7fa5-4f57-bef5-94e5e15af2f0.cfargotunnel.com"]

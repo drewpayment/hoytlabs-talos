@@ -11,8 +11,8 @@ spec:
     repoURL: https://github.com/drewpayment/hoytlabs-talos.git
     path: infrastructure/controllers/networking/cloudflared
     targetRevision: HEAD
-    plugin:
-      name: kustomize-fetch-tunnel-id
+    # plugin:
+    #   name: kustomize-fetch-tunnel-id
   destination:
     server: https://kubernetes.default.svc
     namespace: networking
