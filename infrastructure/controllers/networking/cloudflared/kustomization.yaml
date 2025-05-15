@@ -4,6 +4,8 @@ kind: Kustomization
 resources:
   - ./dnsendpoint.yaml
   - ./externalsecret.yaml
+  - ./configs-apps.yaml
+  - ./app.yaml
 configMapGenerator:
   - name: cloudflared-configmap
     files:
