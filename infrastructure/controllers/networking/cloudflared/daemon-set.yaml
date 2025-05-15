@@ -44,7 +44,7 @@ spec:
               mountPath: /etc/cloudflared/config/config.yaml
               subPath: config.yaml
             - name: credentials
-              mountPath: /etc/cloudflared/credentials
+              mountPath: /etc/cloudflared/credentials/CLOUDFLARED_CREDENTIALS_JSON
               subPath: CLOUDFLARED_CREDENTIALS_JSON
               readOnly: true
       restartPolicy: Always
