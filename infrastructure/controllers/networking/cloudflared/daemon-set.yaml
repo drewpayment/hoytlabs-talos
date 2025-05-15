@@ -20,12 +20,11 @@ spec:
         - name: cloudflared
           image: cloudflare/cloudflared:2025.1.0 # renovate: docker=cloudflare/cloudflared
           imagePullPolicy: IfNotPresent
-          # args:
-          #   - tunnel
-          #   - --config
-          #   - /etc/cloudflared/config/config.yaml
-          #   - run
-          command: ["tail", "-f", "/dev/null"]
+          args:
+            - tunnel
+            - --config
+            - /etc/cloudflared/config/config.yaml
+            - run
           livenessProbe:
             httpGet:
               path: /ready
