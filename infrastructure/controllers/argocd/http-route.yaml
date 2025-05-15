@@ -3,8 +3,6 @@ kind: HTTPRoute
 metadata:
   name: argocd
   namespace: argocd
-  annotations:
-    external-dns.alpha.kubernetes.io/hostname: argocd.hoytlabs.app
 spec:
   parentRefs:
     - name: gateway-internal
@@ -18,5 +16,5 @@ spec:
             value: /
       backendRefs:
         - name: argocd-server
-          port: 5556
+          port: 80
           weight: 1

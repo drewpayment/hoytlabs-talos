@@ -56,6 +56,9 @@ redis:
       memory: 128Mi
 
 server:
+  service:
+    annotations:
+      external-dns.alpha.kubernetes.io/hostname: argocd.hoytlabs.app
   resources:
     requests:
       cpu: 50m
