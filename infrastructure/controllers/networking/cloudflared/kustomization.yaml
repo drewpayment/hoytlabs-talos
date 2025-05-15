@@ -8,6 +8,7 @@ resources:
   - ./app.yaml
 configMapGenerator:
   - name: cloudflared-configmap
+    namespace: cloudflared
     files:
       - ./configs/config.yaml
 generatorOptions:

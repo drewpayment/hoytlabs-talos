@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: cloudflared-configs
-  namespace: networking
+  namespace: cloudflared
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -15,7 +15,7 @@ spec:
     #   name: kustomize-fetch-tunnel-id
   destination:
     server: https://kubernetes.default.svc
-    namespace: networking
+    namespace: cloudflared
   syncPolicy:
     automated:
       prune: true
