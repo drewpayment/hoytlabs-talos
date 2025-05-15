@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: cloudflared-configs
-  namespace: argocd
+  namespace: networking
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
