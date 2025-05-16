@@ -2,6 +2,16 @@
 driver:
   name: nfs.csi.k8s.io
   replicas: 2
+  mountPermissions: 0
+  
+serviceAccount:
+  create: true # When true, service accounts will be created for you. Set to false if you want to use your own.
+  controller: csi-nfs-controller-sa # Name of Service Account to be created or used
+  node: csi-nfs-node-sa # Name of Service Account to be created or used
+
+rbac:
+  create: true
+  name: nfs
 
 storageClasses:
 - name: tank-db

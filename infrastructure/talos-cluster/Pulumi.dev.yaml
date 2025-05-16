@@ -13,16 +13,34 @@ config:
       filename: controlplane-msi.yaml
       deviceSelector:
         busPath: 0*
+      cluster:
+        proxy:
+          disabled: true
+        network:
+          cni:
+            name: none
     - ip: 192.168.86.204
       hostname: kube-master-dell-1
       filename: controlplane-dell.yaml
       deviceSelector:
         busPath: 0*
+      cluster:
+        proxy:
+          disabled: true
+        network:
+          cni:
+            name: none
     - ip: 192.168.86.201
       hostname: kube-master-opti-1
       filename: controlplane-opti.yaml
       deviceSelector:
         busPath: 0*
+      cluster:
+        proxy:
+          disabled: true
+        network:
+          cni:
+            name: none
   kubernetes: 1.33.0
   machine:
     install:

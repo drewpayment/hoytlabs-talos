@@ -76,6 +76,8 @@ EOF
         hostname=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].hostname")
         filename=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].filename")
         busPath=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].deviceSelector.busPath")
+        clusterProxyDisabled=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].cluster.proxy.disabled")
+        clusterNetworkCNIName=$(cat ${talosOutputDir}/node-config.json | jq -r ".[$i].cluster.network.cni.name")
         
         # Create node-specific patch file
         cat > ${talosOutputDir}/patch-$i.json << EOF
@@ -130,6 +132,16 @@ EOF
       "$ip",
       "127.0.0.1"
     ]
+  },
+  {
+    "op": "add",
+    "path": "/cluster/proxy/disabled",
+    "value": "$clusterProxyDisabled"
+  },
+  {
+    "op": "add",
+    "path": "/cluster/network/cni/name",
+    "value": "$clusterNetworkCNIName"
   }
 ]
 EOF
