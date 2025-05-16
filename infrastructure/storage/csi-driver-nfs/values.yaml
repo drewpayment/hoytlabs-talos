@@ -1,30 +1,10 @@
 
-driver:
-  name: nfs.csi.k8s.io
-  replicas: 2
-  mountPermissions: 0
-  
-serviceAccount:
-  create: true # When true, service accounts will be created for you. Set to false if you want to use your own.
-  controller: csi-nfs-controller-sa # Name of Service Account to be created or used
-  node: csi-nfs-node-sa # Name of Service Account to be created or used
-
-rbac:
+storageClass:
   create: true
-  name: nfs
-
-storageClasses:
-- name: tank-db
-  defaultClass: false
+  name: tank-db
+  provisioner: nfs.csi.k8s.io
   parameters:
     server: 192.168.86.44
     share: /mnt/tank/db
-  mountOptions:
-    - nfsvers=4.1
-
-csiDriver:
-  name: nfs.csi.k8s.io
-  attachRequired: false
-  fsGroupPolicy: File
-
-kubeletDir: /var/lib/kubelet
+  reclaimPolicy: Retain
+  volumeBindingNode: Immediate
