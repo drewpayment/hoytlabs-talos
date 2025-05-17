@@ -1,0 +1,44 @@
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: affine-redis
+  namespace: affine
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: affine-redis
+  template:
+    metadata:
+      labels:
+        app: affine-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis
+        ports:
+        - containerPort: 6379
+        readinessProbe:
+          exec:
+            command:
+            - redis-cli
+            - --raw
+            - incr
+            - ping
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 5
+        livenessProbe:
+          exec:
+            command:
+            - redis-cli
+            - --raw
+            - incr
+            - ping
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 5

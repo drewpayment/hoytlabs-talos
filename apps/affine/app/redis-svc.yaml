@@ -1,0 +1,13 @@
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: affine-redis
+  namespace: affine
+spec:
+  selector:
+    app: affine-redis
+  ports:
+  - port: 6379
+    targetPort: 6379

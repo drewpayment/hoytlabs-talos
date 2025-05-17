@@ -1,0 +1,17 @@
+---
+# ConfigMap to store environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: affine-config
+  namespace: affine
+data:
+  AFFINE_REVISION: "stable"
+  PORT: "3010"
+  AFFINE_SERVER_HTTPS: "false"
+  AFFINE_SERVER_HOST: "notes.hoytlabs.app"
+  AFFINE_SERVER_EXTERNAL_URL: "https://notes.hoytlabs.app"
+  DB_DATABASE: "affine"
+  REDIS_SERVER_HOST: "affine-redis"
+  POSTGRES_HOST: "192.168.86.142"
+  POSTGRES_PORT: "5432"

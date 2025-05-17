@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: affine-svc
+  namespace: affine
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 3010
+      protocol: TCP
+      targetPort: 3010
+      name: http
+  selector:
+    app: affine-server  # Changed to match the Deployment's label

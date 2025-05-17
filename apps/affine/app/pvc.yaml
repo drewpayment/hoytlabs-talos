@@ -1,0 +1,65 @@
+---
+apiVersion: v1
+kind: PersistentVolume 
+metadata:
+  name: affine-upload-pv
+  namespace: affine
+spec: 
+  capacity: 
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain 
+  storageClassName: affine-storage
+  nfs:
+    server: 192.168.86.44
+    path: /mnt/tank/appdata/affine/upload
+
+---
+# PersistentVolumeClaim for uploads
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: affine-upload-pvc
+  namespace: affine
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: affine-storage
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: affine-upload-pv
+      
+---
+apiVersion: v1
+kind: PersistentVolume 
+metadata:
+  name: affine-config-pv
+  namespace: affine
+spec: 
+  capacity: 
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain 
+  storageClassName: affine-storage
+  nfs:
+    server: 192.168.86.44
+    path: /mnt/tank/appdata/affine/config
+
+---
+# PersistentVolumeClaim for config
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: affine-config-pvc
+  namespace: affine
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: affine-storage
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: affine-config-pv

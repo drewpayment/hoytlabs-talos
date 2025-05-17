@@ -1,0 +1,57 @@
+---
+# AFFiNE Migration Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: affine-migration
+  namespace: affine
+spec:
+  template:
+    spec:
+      containers:
+      - name: affine-migration
+        image: ghcr.io/toeverything/affine-graphql:stable
+        command: ['sh', '-c', 'node ./scripts/self-host-predeploy.js']
+        volumeMounts:
+        - name: affine-upload
+          mountPath: /root/.affine/storage
+        - name: affine-config
+          mountPath: /root/.affine/config
+        env:
+        - name: REDIS_SERVER_HOST
+          value: "affine-redis"
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: affine-db-secret
+              key: affine_pg_user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: affine-db-secret
+              key: affine_pg_password
+        - name: DB_DATABASE
+          valueFrom:
+            configMapKeyRef:
+              name: affine-config
+              key: DB_DATABASE
+        - name: DATABASE_URL
+          value: "postgresql://$(DB_USERNAME):$(DB_PASSWORD)@192.168.86.142:5432/affine"
+        - name: AFFINE_SERVER_HTTPS
+          valueFrom:
+            configMapKeyRef:
+              name: affine-config
+              key: AFFINE_SERVER_HTTPS
+        - name: AFFINE_SERVER_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: affine-config
+              key: AFFINE_SERVER_HOST
+      volumes:
+      - name: affine-upload
+        persistentVolumeClaim:
+          claimName: affine-upload-pvc
+      - name: affine-config
+        persistentVolumeClaim:
+          claimName: affine-config-pvc
+      restartPolicy: OnFailure
