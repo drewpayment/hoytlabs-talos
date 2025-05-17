@@ -21,17 +21,17 @@ spec:
         - name: MEILI_MASTER_KEY
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: meili_master_key
         - name: NEXT_PUBLIC_SECRET
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: next_public_secret
         - name: NEXTAUTH_SECRET
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: nextauth_secret
         envFrom:
         - configMapRef:

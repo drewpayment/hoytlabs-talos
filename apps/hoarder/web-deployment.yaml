@@ -25,52 +25,52 @@ spec:
         - name: MEILI_MASTER_KEY
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: meili_master_key
         - name: NEXT_PUBLIC_SECRET
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: next_public_secret
         - name: NEXTAUTH_SECRET
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: nextauth_secret
         - name: OPENAI_BASE_URL
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: openai_base_url
         - name: OPENAI_API_KEY
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: openai_api_key
         - name: INFERENCE_TEXT_MODEL
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: inference_text_model
         - name: INFERENCE_IMAGE_MODEL
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: inference_image_model
         - name: EMBEDDING_TEXT_MODEL
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: embedding_text_model
         - name: INFERENCE_CONTEXT_LENGTH
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: inference_context_length
         - name: DISABLE_SIGNUPS
           valueFrom:
             secretKeyRef:
-              name: doppler-cluster-secret-store
+              name: hoarder-secrets
               key: disable_signups
         - name: HOARDER_VERSION
           value: release
