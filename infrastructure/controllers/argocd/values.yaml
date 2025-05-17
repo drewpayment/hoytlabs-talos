@@ -13,12 +13,20 @@ configs:
           # Git repository when Argo CD checks it out.
           args: ["scripts/kustomize-patch-tunnel-id.sh"]
           
+    # Ignore differences for HTTPRoute resources
     resource.customizations.ignoreDifferences.gateway.networking.k8s.io_HTTPRoute: |
       jqPathExpressions:
       - '.spec.parentRefs[]?.group'
       - '.spec.parentRefs[]?.kind'
       - '.spec.rules[]?.backendRefs[]?.group'
       - '.spec.rules[]?.backendRefs[]?.kind'
+
+    # Ignoring differences in ExternalSecret resources
+    resource.customizations.ignoreDifferences.external-secrets.io_ExternalSecret: |
+      jqPathExpressions:
+      - '.spec.data[]?.remoteRef?.conversionStrategy'
+      - '.spec.data[]?.remoteRef?.decodingStrategy'
+      - '.spec.data[]?.remoteRef?.metadataPolicy'
           
   cmp:
     create: true
