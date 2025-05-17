@@ -36,10 +36,8 @@ spec:
       server: https://kubernetes.default.svc
   # Restrict application projects from creating cluster-wide resources
   clusterResourceWhitelist:
-    - group: cert-manager.io
-      kind: ClusterIssuer
-    - group: ""
-      kind: Namespace
+    - group: '*'
+      kind: '*'
   namespaceResourceWhitelist:
     - group: '*'
       kind: '*'
