@@ -36,7 +36,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: hoarder-secrets
-              key: nextauth_secret
+              key: next_auth_secret
         - name: OPENAI_BASE_URL
           valueFrom:
             secretKeyRef:
