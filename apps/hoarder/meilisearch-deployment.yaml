@@ -33,9 +33,9 @@ spec:
             secretKeyRef:
               name: hoarder-secrets
               key: nextauth_secret
-        envFrom:
-        - configMapRef:
-            name: hoarder-configuration-h4242cgbtk
+        # envFrom:
+        # - configMapRef:
+        #     name: hoarder-configuration-h4242cgbtk
         image: getmeili/meilisearch:v1.11.1
         name: meilisearch
         volumeMounts:
