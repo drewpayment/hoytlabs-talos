@@ -1,0 +1,12 @@
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: hoarder-storage
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.86.44
+  share: /mnt/tank/appdata/hoarder
+  mountOptions: "nolock"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate

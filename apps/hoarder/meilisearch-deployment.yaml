@@ -1,0 +1,47 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: meilisearch
+  namespace: hoarder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: meilisearch
+  template:
+    metadata:
+      labels:
+        app: meilisearch
+    spec:
+      containers:
+      - env:
+        - name: MEILI_NO_ANALYTICS
+          value: "true"
+        - name: MEILI_MASTER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: meili_master_key
+        - name: NEXT_PUBLIC_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: next_public_secret
+        - name: NEXTAUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: nextauth_secret
+        envFrom:
+        - configMapRef:
+            name: hoarder-configuration-h4242cgbtk
+        image: getmeili/meilisearch:v1.11.1
+        name: meilisearch
+        volumeMounts:
+        - mountPath: /meili_data
+          name: meilisearch
+      volumes:
+      - name: meilisearch
+        persistentVolumeClaim:
+          claimName: meilisearch-pvc

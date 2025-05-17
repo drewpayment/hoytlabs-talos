@@ -1,0 +1,90 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hoarder-web-deployment
+  namespace: hoarder
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hoarder-web
+  template:
+    metadata:
+      labels:
+        app: hoarder-web
+    spec:
+      containers:
+      - env:
+        - name: MEILI_ADDR
+          value: http://meilisearch:7700
+        - name: BROWSER_WEB_URL
+          value: http://chrome:9222
+        - name: DATA_DIR
+          value: /data
+        - name: MEILI_MASTER_KEY
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: meili_master_key
+        - name: NEXT_PUBLIC_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: next_public_secret
+        - name: NEXTAUTH_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: nextauth_secret
+        - name: OPENAI_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: openai_base_url
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: openai_api_key
+        - name: INFERENCE_TEXT_MODEL
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: inference_text_model
+        - name: INFERENCE_IMAGE_MODEL
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: inference_image_model
+        - name: EMBEDDING_TEXT_MODEL
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: embedding_text_model
+        - name: INFERENCE_CONTEXT_LENGTH
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: inference_context_length
+        - name: DISABLE_SIGNUPS
+          valueFrom:
+            secretKeyRef:
+              name: doppler-cluster-secret-store
+              key: disable_signups
+        - name: HOARDER_VERSION
+          value: release
+        - name: NEXTAUTH_URL
+          value: http://hoarder.drewpayment.com
+        image: ghcr.io/hoarder-app/hoarder:release
+        imagePullPolicy: Always
+        name: web
+        ports:
+        - containerPort: 3000
+        volumeMounts:
+        - mountPath: /data
+          name: data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: hoarder-pvc
