@@ -3,3 +3,14 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  - configmap.yaml
+  - externalsecret.yaml
+  - http-route.yaml
+  - job.yaml
+  - pvc.yaml
+  - redis-deployment.yaml
+  - redis-svc.yaml
+  - service.yaml
+  - serviceaccount.yaml
+  - storageclass.yaml
+  - deployment.yaml
