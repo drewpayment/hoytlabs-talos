@@ -32,7 +32,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: hoarder-secrets
-              key: nextauth_secret
+              key: next_auth_secret
         # envFrom:
         # - configMapRef:
         #     name: hoarder-configuration-h4242cgbtk
