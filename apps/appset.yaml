@@ -45,11 +45,3 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
-      ignoreDifferences:
-        - group: gateway.networking.k8s.io # The API group for HTTPRoute
-          kind: HTTPRoute
-          jqPathExpressions:
-            - '.spec.parentRefs[]?.group'      # Ignores group in all parentRefs items
-            - '.spec.parentRefs[]?.kind'       # Ignores kind in all parentRefs items
-            - '.spec.rules[]?.backendRefs[]?.group' # Ignores group in all backendRefs items within rules
-            - '.spec.rules[]?.backendRefs[]?.kind'  # Ignores kind in all backendRefs items within rules
