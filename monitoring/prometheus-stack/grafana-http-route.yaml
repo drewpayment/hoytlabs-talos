@@ -19,3 +19,4 @@ spec:
       backendRefs:
         - name: kube-prometheus-stack-grafana
           port: 80
+          weight: 1

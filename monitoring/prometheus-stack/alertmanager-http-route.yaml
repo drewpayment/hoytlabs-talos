@@ -19,3 +19,4 @@ spec:
       backendRefs:
         - name: kube-prometheus-stack-alertmanager
           port: 9093
+          weight: 1
