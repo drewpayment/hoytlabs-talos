@@ -1,16 +1,16 @@
-prometheus:
-  prometheusSpec:
-    storageSpec:
-      volumeClaimTemplate:
-        spec:
-          storageClassName: openebs-hostpath
-          accessModes:
-            - ReadWriteOnce
-          resources:
-            requests:
-              storage: 10G
-          selector:
-            matchLabels:
-              app: prometheus
+# prometheus:
+#   prometheusSpec:
+#     storageSpec:
+#       volumeClaimTemplate:
+#         spec:
+#           storageClassName: openebs-hostpath
+#           accessModes:
+#             - ReadWriteOnce
+#           resources:
+#             requests:
+#               storage: 10G
+#           selector:
+#             matchLabels:
+#               app: prometheus
 nodeExporter:
   enabled: false
