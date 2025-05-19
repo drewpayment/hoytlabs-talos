@@ -6,7 +6,7 @@ metadata:
 spec:
   template:
     spec:
-      serviceAccountName: headlamp # This SA needs token creation permissions
+      serviceAccountName: headlamp-admin # This SA needs token creation permissions
       containers:
       - name: token-creator
         image: bitnami/kubectl:latest
