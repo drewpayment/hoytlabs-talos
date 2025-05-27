@@ -1,0 +1,8 @@
+apiVersion: operator.tigera.io/v1
+kind: ManagementClusterConnection
+metadata:
+  name: tigera-secure
+spec:
+  # ManagementClusterAddr should be the externally reachable address to which your managed cluster
+  # will connect. Valid examples are: "0.0.0.0:31000", "example.com:32000", "[::1]:32500"
+  managementClusterAddr: "gcp-us-prod-01-management.calicocloud.io:443"
