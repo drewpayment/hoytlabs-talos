@@ -6,4 +6,5 @@ resources:
   - externalsecret.yaml
   - custom-resources.yaml
   - bgp-peer.yaml
+  - gateway-api.yaml
   - management-cluster-connection.yaml
