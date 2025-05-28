@@ -5,4 +5,5 @@ resources:
   - namespace.yaml
   - externalsecret.yaml
   - custom-resources.yaml
+  - bgp-peer.yaml
   - management-cluster-connection.yaml
