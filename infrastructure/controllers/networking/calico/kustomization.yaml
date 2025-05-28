@@ -4,4 +4,5 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - externalsecret.yaml
+  - custom-resources.yaml
   - management-cluster-connection.yaml
