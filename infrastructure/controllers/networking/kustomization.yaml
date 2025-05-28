@@ -4,6 +4,7 @@ kind: Kustomization
 resources:
 - doppler-cluster-secret-store.yaml
 - namespace.yaml 
-- cilium
+# - cilium
+- calico
 - gateway
 - cloudflared
