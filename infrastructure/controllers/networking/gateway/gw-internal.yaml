@@ -7,7 +7,7 @@ spec:
   addresses:
   - type: IPAddress
     value: 192.168.86.216
-  gatewayClassName: cilium
+  gatewayClassName: envoy-gateway
   listeners:
     - name: http
       protocol: HTTP
