@@ -27,7 +27,7 @@ ingress:
         - name: Accept-Language
         - name: User-Agent
   - hostname: "*.hoytlabs.app"
-    service: https://cilium-gateway-gateway-external.gateway.svc.cluster.local:443
+    service: https://envoy-gateway.envoy-gateway-system.svc.cluster.local:443
     originRequest:
       noTLSVerify: true
       originServerName: "*.hoytlabs.app"
@@ -55,7 +55,7 @@ ingress:
         - name: CF-Challenge
         - name: CF-Bot-Management-Tag
   - hostname: hoytlabs.app
-    service: https://cilium-gateway-gateway-external.gateway.svc.cluster.local:443
+    service: https://envoy-gateway.envoy-gateway-system.svc.cluster.local:443
     originRequest:
       noTLSVerify: true
       originServerName: hoytlabs.app

@@ -5,6 +5,6 @@ resources:
 - doppler-cluster-secret-store.yaml
 - namespace.yaml 
 # - cilium
-- calico
+# - calico
 - gateway
 - cloudflared
