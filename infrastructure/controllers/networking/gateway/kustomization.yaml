@@ -8,7 +8,7 @@ resources:
   - namespace.yaml
   - gw-external.yaml
   - gw-internal.yaml
-  - cert-hoytlabs.yaml
+  # - cert-hoytlabs.yaml
 
 
 generatorOptions:
