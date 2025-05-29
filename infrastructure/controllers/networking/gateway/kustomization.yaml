@@ -8,6 +8,7 @@ resources:
   - gateway-class.yaml
   - gw-external.yaml
   - gw-internal.yaml
+  - externalsecret.yaml
   - cert-hoytlabs.yaml
 
 

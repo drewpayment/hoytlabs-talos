@@ -11,7 +11,7 @@ spec:
     group: cert-manager.io
     kind: ClusterIssuer
     name: cloudflare-cluster-issuer
-  secretName: cert-hoytlabs-th8s6
+  secretName: cert-hoytlabs
   usages:
     - digital signature
     - key encipherment
