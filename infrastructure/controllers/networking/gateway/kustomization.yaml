@@ -4,7 +4,6 @@ kind: Kustomization
 resources:
 
   # Gateway resources
-  - gateway-class.yaml
   - namespace.yaml
   - gw-external.yaml
   - gw-internal.yaml
