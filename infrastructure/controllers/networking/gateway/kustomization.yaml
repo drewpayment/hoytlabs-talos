@@ -5,6 +5,7 @@ resources:
 
   # Gateway resources
   - namespace.yaml
+  - gateway-class.yaml
   - gw-external.yaml
   - gw-internal.yaml
   # - cert-hoytlabs.yaml
