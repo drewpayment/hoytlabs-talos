@@ -8,6 +8,7 @@ resources:
   - http-route.yaml
   - networkpolicy.yaml
   - storageclass.yaml
+  - pvc.yaml
   
 helmCharts:
   - name: kestra

@@ -1,0 +1,31 @@
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kestra-pv
+  namespace: kestra
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: kestra-storage
+  nfs:
+    server: 192.168.86.44
+    path: /mnt/tank/appdata/kestra
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kestra-pvc
+  namespace: kestra
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: kestra-storage
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: kestra-pv
