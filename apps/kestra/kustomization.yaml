@@ -6,10 +6,10 @@ namespace: kestra
 resources: 
   - namespace.yaml
   
-helmCharts:
-  - name: kestra
-    repo: https://helm.kestra.io/
-    version: 0.22.9
-    releaseName: kestra
-    namespace: kestra
+# helmCharts:
+#   - name: kestra
+#     repo: https://helm.kestra.io/
+#     version: 0.22.9
+#     releaseName: kestra
+#     namespace: kestra
     # valuesFile: values.yaml
