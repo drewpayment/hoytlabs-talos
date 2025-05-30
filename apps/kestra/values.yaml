@@ -6,6 +6,16 @@ ingress:
 # Disable Docker-in-Docker (not compatible with Talos security policies)
 dind:
   enabled: false
+  
+minio: 
+  persistence: 
+    storageClass: kestra-storage
+    
+postgresql:
+  primary: 
+    persistence: 
+      storageClass: kestra-storage
+  
 # Resource configuration - increased memory for standalone mode
 # Use Kubernetes task runner instead of Docker-in-Docker for script execution
 pluginDefaults:

@@ -6,6 +6,7 @@ namespace: kestra
 resources: 
   - namespace.yaml
   - http-route.yaml
+  - networkpolicy.yaml
   
 helmCharts:
   - name: kestra
