@@ -17,7 +17,7 @@ minio:
     runAsGroup: 1001
     runAsNonRoot: true
   persistence: 
-    existingClaim: kestra-pvc
+    existingClaim: minio-pvc
     storageClass: kestra-storage
     
 postgresql:
@@ -31,7 +31,7 @@ postgresql:
       runAsGroup: 999
       runAsNonRoot: true
     persistence: 
-      existingClaim: kestra-pvc
+      existingClaim: pg-pvc
       storageClass: kestra-storage
   
 # Resource configuration - increased memory for standalone mode

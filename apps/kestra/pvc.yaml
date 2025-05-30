@@ -2,24 +2,24 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: kestra-pv
+  name: minio-pv
   namespace: kestra
 spec:
   capacity:
-    storage: 20Gi
+    storage: 8Gi
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   storageClassName: kestra-storage
   nfs:
     server: 192.168.86.44
-    path: /mnt/tank/appdata/kestra
+    path: /mnt/tank/appdata/kestra/minio
 
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: kestra-pvc
+  name: minio-pvc
   namespace: kestra
 spec:
   accessModes:
@@ -27,5 +27,38 @@ spec:
   storageClassName: kestra-storage
   resources:
     requests:
-      storage: 20Gi
-  volumeName: kestra-pv
+      storage: 8Gi
+  volumeName: minio-pv
+  
+  
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pg-pv
+  namespace: kestra
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: kestra-storage
+  nfs:
+    server: 192.168.86.44
+    path: /mnt/tank/appdata/kestra/postgresql
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pg-pvc
+  namespace: kestra
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: kestra-storage
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: pg-pv
