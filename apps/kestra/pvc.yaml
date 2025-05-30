@@ -8,7 +8,7 @@ spec:
   capacity:
     storage: 20Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   storageClassName: kestra-storage
   nfs:
@@ -23,7 +23,7 @@ metadata:
   namespace: kestra
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   storageClassName: kestra-storage
   resources:
     requests:

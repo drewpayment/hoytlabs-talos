@@ -8,12 +8,28 @@ dind:
   enabled: false
   
 minio: 
+  podSecurityContext:
+    enabled: true
+    fsGroup: 1001
+  containerSecurityContext:
+    enabled: true
+    runAsUser: 1001
+    runAsGroup: 1001
+    runAsNonRoot: true
   persistence: 
     existingClaim: kestra-pvc
     storageClass: kestra-storage
     
 postgresql:
   primary: 
+    podSecurityContext:
+      enabled: true
+      fsGroup: 999
+    containerSecurityContext:
+      enabled: true
+      runAsUser: 999
+      runAsGroup: 999
+      runAsNonRoot: true
     persistence: 
       existingClaim: kestra-pvc
       storageClass: kestra-storage
