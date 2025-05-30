@@ -6,7 +6,7 @@ metadata:
   namespace: kestra
 spec:
   capacity:
-    storage: 1Gi
+    storage: 20Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
@@ -27,5 +27,5 @@ spec:
   storageClassName: kestra-storage
   resources:
     requests:
-      storage: 1Gi
+      storage: 20Gi
   volumeName: kestra-pv

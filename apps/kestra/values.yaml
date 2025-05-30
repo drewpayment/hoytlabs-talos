@@ -9,11 +9,13 @@ dind:
   
 minio: 
   persistence: 
+    existingClaim: kestra-pvc
     storageClass: kestra-storage
     
 postgresql:
   primary: 
     persistence: 
+      existingClaim: kestra-pvc
       storageClass: kestra-storage
   
 # Resource configuration - increased memory for standalone mode
