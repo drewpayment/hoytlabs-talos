@@ -2,8 +2,10 @@ cassandra:
   persistence:
     enabled: true
     size: 100Gi
+    storageClass: nfs-csi
 
 elasticsearch:
   persistence:
     enabled: true
     size: 30Gi
+    storageClass: nfs-csi
