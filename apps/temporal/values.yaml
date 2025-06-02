@@ -1,0 +1,9 @@
+cassandra:
+  persistence:
+    enabled: true
+    size: 100Gi
+
+elasticsearch:
+  persistence:
+    enabled: true
+    size: 30Gi
