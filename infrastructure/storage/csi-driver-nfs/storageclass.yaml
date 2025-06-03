@@ -7,8 +7,8 @@ metadata:
 provisioner: nfs.csi.k8s.io
 parameters:
   server: 192.168.86.44
-  share: /mnt/tank/appdata
-  # Optional: create subdirectories for each PVC
-  subDir: "kubernetes-pvcs"
+  share: /mnt/tank/nfs-share
+  mountPermissions: "0755"
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
+allowVolumeExpansion: true
