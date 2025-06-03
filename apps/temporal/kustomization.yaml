@@ -4,6 +4,7 @@ namespace: temporal
 
 resources: 
   - namespace.yaml
+  - httproute.yaml
   
 helmCharts:
   - name: temporal
@@ -12,4 +13,5 @@ helmCharts:
     releaseName: temporal 
     namespace: temporal
     valuesFile: values.yaml
+    includeCRDs: true
     
