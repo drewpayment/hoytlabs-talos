@@ -8,6 +8,7 @@ resources:
   - storageclass.yaml
   - pvc.yaml
   - configmap.yaml
+  - gitconfig-configmap.yaml
   - externalsecret.yaml
   - serviceaccount.yaml
   - service.yaml
