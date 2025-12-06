@@ -22,6 +22,19 @@ spec:
         app.kubernetes.io/instance: harness
     spec:
       serviceAccountName: harness
+      initContainers:
+        - name: setup-gitconfig
+          image: harness/gitness:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              mkdir -p /data/.config
+              echo '[safe]' > /data/.config/gitconfig
+              echo '    directory = *' >> /data/.config/gitconfig
+          volumeMounts:
+            - name: data
+              mountPath: /data
       containers:
         - name: harness
           image: harness/gitness:latest
@@ -34,12 +47,8 @@ spec:
             - name: data
               mountPath: /data
           env:
-            - name: GIT_CONFIG_COUNT
-              value: "1"
-            - name: GIT_CONFIG_KEY_0
-              value: "safe.directory"
-            - name: GIT_CONFIG_VALUE_0
-              value: "*"
+            - name: GIT_CONFIG_GLOBAL
+              value: /data/.config/gitconfig
             - name: DOCKER_HOST
               value: tcp://localhost:2375
             - name: GITNESS_PRINCIPAL_ADMIN_PASSWORD
