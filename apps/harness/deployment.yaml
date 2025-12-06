@@ -34,6 +34,12 @@ spec:
             - name: data
               mountPath: /data
           env:
+            - name: GIT_CONFIG_COUNT
+              value: "1"
+            - name: GIT_CONFIG_KEY_0
+              value: "safe.directory"
+            - name: GIT_CONFIG_VALUE_0
+              value: "*"
             - name: DOCKER_HOST
               value: tcp://localhost:2375
             - name: GITNESS_PRINCIPAL_ADMIN_PASSWORD
