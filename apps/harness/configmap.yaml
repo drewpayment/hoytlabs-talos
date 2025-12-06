@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: harness-config
+  namespace: harness
+data:
+  # Disable user signup (admin only)
+  GITNESS_USER_SIGNUP_ENABLED: "false"
+  # Server URL - update this to match your domain
+  GITNESS_URL_BASE: "https://harness.hoytlabs.app"
