@@ -8,3 +8,5 @@ data:
   GITNESS_USER_SIGNUP_ENABLED: "false"
   # Server URL - update this to match your domain
   GITNESS_URL_BASE: "https://harness.hoytlabs.app"
+  # Admin user configuration
+  GITNESS_PRINCIPAL_ADMIN_EMAIL: "drew.payment@gmail.com"
