@@ -1,0 +1,22 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: sonarr
+  namespace: sonarr
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: sonarr.hoytlabs.app
+spec:
+  parentRefs:
+    - name: gateway-external
+      namespace: gateway
+  hostnames:
+    - sonarr.hoytlabs.app
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: sonarr
+          port: 8989
+          weight: 1
