@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: overseerr
-  namespace: media
+  namespace: overseerr
   labels:
     app.kubernetes.io/name: overseerr
     app.kubernetes.io/instance: overseerr
