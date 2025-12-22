@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: overseerr-config-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: media-storage
+  nfs:
+    server: 192.168.86.44
+    path: /mnt/tank/appdata/media/overseerr
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: overseerr-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: media-storage
+  resources:
+    requests:
+      storage: 10Gi
