@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: prowlarr-config-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: prowlarr-storage
+  nfs:
+    server: 192.168.86.44
+    path: /mnt/tank/appdata/media/prowlarr
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prowlarr-config
+  namespace: prowlarr
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: prowlarr-storage
+  resources:
+    requests:
+      storage: 1Gi
