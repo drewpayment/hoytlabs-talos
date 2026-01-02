@@ -5,8 +5,7 @@ metadata:
 provisioner: nfs.csi.k8s.io
 parameters:
   server: 192.168.86.44
-  share: /mnt/tank/nfs-share
-  mountPermissions: "0755"
+  share: /mnt/tank/appdata
+  subDir: kubernetes-pvcs
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
-allowVolumeExpansion: true
