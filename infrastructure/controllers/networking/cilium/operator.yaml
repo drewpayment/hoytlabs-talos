@@ -136,6 +136,8 @@ spec:
           operator: Exists
         - key: node.kubernetes.io/not-ready
           operator: Exists
+        - key: node.kubernetes.io/network-unavailable
+          operator: Exists
         - key: node.cloudprovider.kubernetes.io/uninitialized
           operator: Exists
         - key: node.cilium.io/agent-not-ready
