@@ -33,7 +33,7 @@ spec:
             - redpanda
             - start
             - --config=/etc/redpanda/redpanda.yaml
-            - --advertise-kafka-addr=internal://redpanda-0.redpanda-headless.redpanda.svc.cluster.local:9092,external://0.0.0.0:31092
+            - --advertise-kafka-addr=internal://redpanda-0.redpanda-headless.redpanda.svc.cluster.local:9092,external://192.168.86.200:31092
             - --smp=1
             - --memory=512M
             - --reserve-memory=0M
