@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redpanda
+  namespace: redpanda
+spec:
+  serviceName: redpanda-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+          args:
+            - redpanda
+            - start
+            - --config=/etc/redpanda/redpanda.yaml
+            - --advertise-kafka-addr=internal://redpanda-0.redpanda-headless.redpanda.svc.cluster.local:9092,external://0.0.0.0:31092
+            - --smp=1
+            - --memory=512M
+            - --reserve-memory=0M
+            - --overprovisioned
+          ports:
+            - name: kafka
+              containerPort: 9092
+            - name: kafka-external
+              containerPort: 9093
+            - name: admin
+              containerPort: 9644
+            - name: schema
+              containerPort: 8081
+            - name: rpc
+              containerPort: 33145
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 500m
+            limits:
+              memory: 768Mi
+              cpu: "1"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+            - name: config
+              mountPath: /etc/redpanda
+          readinessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: admin
+            initialDelaySeconds: 30
+            periodSeconds: 15
+      volumes:
+        - name: config
+          configMap:
+            name: redpanda-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-csi
+        resources:
+          requests:
+            storage: 5Gi

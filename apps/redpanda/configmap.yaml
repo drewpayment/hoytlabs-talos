@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redpanda-config
+  namespace: redpanda
+data:
+  redpanda.yaml: |
+    redpanda:
+      data_directory: /var/lib/redpanda/data
+      empty_seed_starts_cluster: true
+      seed_servers: []
+      rpc_server:
+        address: 0.0.0.0
+        port: 33145
+      kafka_api:
+        - address: 0.0.0.0
+          port: 9092
+          name: internal
+        - address: 0.0.0.0
+          port: 9093
+          name: external
+      admin:
+        - address: 0.0.0.0
+          port: 9644
+          name: admin
+      advertised_rpc_api:
+        address: redpanda-0.redpanda-headless.redpanda.svc.cluster.local
+        port: 33145
+      advertised_kafka_api:
+        - address: redpanda-0.redpanda-headless.redpanda.svc.cluster.local
+          port: 9092
+          name: internal
+        - address: 0.0.0.0
+          port: 31092
+          name: external
+      developer_mode: true
+    schema_registry:
+      schema_registry_api:
+        - address: 0.0.0.0
+          port: 8081
+          name: main
+    pandaproxy: {}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redpanda-console-config
+  namespace: redpanda
+data:
+  config.yaml: |
+    kafka:
+      brokers:
+        - redpanda-0.redpanda-headless.redpanda.svc.cluster.local:9092
+      schemaRegistry:
+        enabled: true
+        urls:
+          - http://redpanda-0.redpanda-headless.redpanda.svc.cluster.local:8081
+    redpanda:
+      adminApi:
+        enabled: true
+        urls:
+          - http://redpanda-0.redpanda-headless.redpanda.svc.cluster.local:9644
