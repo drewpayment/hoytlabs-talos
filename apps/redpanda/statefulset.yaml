@@ -79,12 +79,5 @@ spec:
             name: redpanda-config
         - name: config
           emptyDir: {}
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        storageClassName: openebs-hostpath
-        resources:
-          requests:
-            storage: 5Gi
+        - name: data
+          emptyDir: {}
