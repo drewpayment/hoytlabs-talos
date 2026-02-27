@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: plugins-service
+spec:
+  selector:
+    app: plugins-service
+  ports:
+    - name: grpc
+      port: 50053
+      targetPort: 50053
+    - name: http
+      port: 8080
+      targetPort: 8080

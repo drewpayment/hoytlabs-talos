@@ -1,0 +1,54 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: orbit
+
+resources:
+  # Core
+  - externalsecret.yaml
+  - serviceaccount.yaml
+  - storageclass.yaml
+  - pvc.yaml
+
+  # Data layer
+  - mongodb-statefulset.yaml
+  - mongodb-service.yaml
+  - postgresql-statefulset.yaml
+  - postgresql-service.yaml
+  - postgresql-configmap.yaml
+  - redis-statefulset.yaml
+  - redis-service.yaml
+  - redpanda-statefulset.yaml
+  - redpanda-service.yaml
+  - minio-statefulset.yaml
+  - minio-service.yaml
+  - minio-init-job.yaml
+
+  # Infrastructure
+  - temporal-deployment.yaml
+  - temporal-service.yaml
+  - temporal-configmap.yaml
+  - temporal-ui-deployment.yaml
+  - temporal-ui-service.yaml
+  - temporal-ui-http-route.yaml
+  - registry-deployment.yaml
+  - registry-service.yaml
+  - buildkit-daemonset.yaml
+  - buildkit-service.yaml
+
+  # Application services
+  - orbit-www-deployment.yaml
+  - orbit-www-service.yaml
+  - orbit-www-configmap.yaml
+  - orbit-www-http-route.yaml
+  - repository-service-deployment.yaml
+  - repository-service-service.yaml
+  - build-service-deployment.yaml
+  - build-service-service.yaml
+  - bifrost-deployment.yaml
+  - bifrost-service.yaml
+  - kafka-service-deployment.yaml
+  - kafka-service-service.yaml
+  - plugins-service-deployment.yaml
+  - plugins-service-service.yaml
+  - temporal-worker-deployment.yaml

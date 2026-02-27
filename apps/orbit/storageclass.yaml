@@ -1,0 +1,11 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: orbit-storage
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.86.44
+  share: /mnt/tank/appdata/orbit
+  mountOptions: "nolock"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
