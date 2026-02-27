@@ -15,7 +15,8 @@ spec:
     spec:
       serviceAccountName: orbit
       securityContext:
-        runAsUser: 0
+        runAsUser: 70
+        fsGroup: 70
       containers:
         - name: postgresql
           image: postgres:15-alpine

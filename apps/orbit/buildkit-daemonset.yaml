@@ -18,7 +18,6 @@ spec:
           args:
             - --addr
             - tcp://0.0.0.0:1234
-            - --oci-worker-no-process-sandbox
           ports:
             - containerPort: 1234
           securityContext:
