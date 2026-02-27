@@ -54,5 +54,5 @@ spec:
             periodSeconds: 10
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: mongodb-data
+          emptyDir:
+            sizeLimit: 20Gi

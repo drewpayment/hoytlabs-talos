@@ -27,7 +27,7 @@ spec:
             - --advertise-kafka-addr
             - internal://redpanda:9092
             - --rpc-addr
-            - redpanda:33145
+            - 0.0.0.0:33145
             - --advertise-rpc-addr
             - redpanda:33145
             - --mode
