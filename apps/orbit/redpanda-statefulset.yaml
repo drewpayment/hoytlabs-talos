@@ -64,5 +64,5 @@ spec:
             timeoutSeconds: 5
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: redpanda-data
+          emptyDir:
+            sizeLimit: 10Gi

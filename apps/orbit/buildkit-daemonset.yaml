@@ -34,5 +34,5 @@ spec:
               cpu: "2"
       volumes:
         - name: cache
-          persistentVolumeClaim:
-            claimName: buildkit-cache
+          emptyDir:
+            sizeLimit: 10Gi

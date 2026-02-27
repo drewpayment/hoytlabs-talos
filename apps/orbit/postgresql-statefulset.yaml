@@ -14,8 +14,6 @@ spec:
         app: postgresql
     spec:
       serviceAccountName: orbit
-      securityContext:
-        runAsUser: 0
       containers:
         - name: postgresql
           image: postgres:15-alpine
@@ -58,8 +56,8 @@ spec:
             periodSeconds: 10
       volumes:
         - name: data
-          persistentVolumeClaim:
-            claimName: postgresql-data
+          emptyDir:
+            sizeLimit: 10Gi
         - name: init-scripts
           configMap:
             name: postgresql-init
