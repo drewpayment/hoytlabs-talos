@@ -15,8 +15,7 @@ spec:
     spec:
       serviceAccountName: orbit
       securityContext:
-        runAsUser: 101
-        fsGroup: 101
+        runAsUser: 0
       containers:
         - name: redpanda
           image: docker.redpanda.com/redpandadata/redpanda:v24.2.10
