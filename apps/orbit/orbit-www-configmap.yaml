@@ -3,6 +3,7 @@ kind: ConfigMap
 metadata:
   name: orbit-www-config
 data:
+  HOSTNAME: "0.0.0.0"
   NEXT_PUBLIC_APP_URL: "https://orbit.hoytlabs.app"
   TEMPORAL_ADDRESS: "temporal:7233"
   TEMPORAL_NAMESPACE: "default"
