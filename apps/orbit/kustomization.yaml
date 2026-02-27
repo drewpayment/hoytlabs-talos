@@ -5,6 +5,7 @@ namespace: orbit
 
 resources:
   # Core
+  - namespace.yaml
   - externalsecret.yaml
   - serviceaccount.yaml
   - storageclass.yaml

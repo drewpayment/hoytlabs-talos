@@ -13,6 +13,7 @@ spec:
         app: temporal-ui
     spec:
       serviceAccountName: orbit
+      enableServiceLinks: false
       containers:
         - name: temporal-ui
           image: temporalio/ui:2.30.0
@@ -23,6 +24,10 @@ spec:
               value: temporal:7233
             - name: TEMPORAL_CORS_ORIGINS
               value: https://orbit.hoytlabs.app
+            - name: TEMPORAL_PORT
+              value: "7233"
+            - name: TEMPORAL_UI_PORT
+              value: "8080"
           resources:
             requests:
               memory: 64Mi
