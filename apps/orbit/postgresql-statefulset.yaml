@@ -14,15 +14,8 @@ spec:
         app: postgresql
     spec:
       serviceAccountName: orbit
-      initContainers:
-        - name: fix-permissions
-          image: busybox:1.36
-          command: ["sh", "-c", "chown -R 70:70 /var/lib/postgresql/data"]
-          securityContext:
-            runAsUser: 0
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/postgresql/data
+      securityContext:
+        runAsUser: 0
       containers:
         - name: postgresql
           image: postgres:15-alpine
