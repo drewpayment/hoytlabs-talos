@@ -38,12 +38,12 @@ spec:
               memory: 256Mi
               cpu: 200m
           livenessProbe:
-            grpc:
-              port: 50051
+            tcpSocket:
+              port: 8081
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
-            grpc:
-              port: 50051
+            tcpSocket:
+              port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
