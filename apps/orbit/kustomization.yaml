@@ -32,6 +32,8 @@ resources:
   - temporal-ui-deployment.yaml
   - temporal-ui-service.yaml
   - temporal-ui-http-route.yaml
+  - oauth2-proxy-deployment.yaml
+  - oauth2-proxy-service.yaml
   - registry-deployment.yaml
   - registry-service.yaml
   - buildkit-daemonset.yaml
