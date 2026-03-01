@@ -44,6 +44,9 @@ resources:
   - orbit-www-service.yaml
   - orbit-www-configmap.yaml
   - orbit-www-http-route.yaml
+  - orbit-docs-deployment.yaml
+  - orbit-docs-service.yaml
+  - orbit-docs-http-route.yaml
   - repository-service-deployment.yaml
   - repository-service-service.yaml
   - build-service-deployment.yaml

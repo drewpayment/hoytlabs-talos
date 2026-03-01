@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orbit-docs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orbit-docs
+  template:
+    metadata:
+      labels:
+        app: orbit-docs
+    spec:
+      serviceAccountName: orbit
+      containers:
+        - name: orbit-docs
+          image: ghcr.io/drewpayment/orbit/orbit-docs:latest
+          ports:
+            - containerPort: 3002
+          env:
+            - name: PORT
+              value: "3002"
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 250m
+          livenessProbe:
+            httpGet:
+              path: /docs
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /docs
+              port: 3002
+            initialDelaySeconds: 5
+            periodSeconds: 10
