@@ -13,3 +13,6 @@ data:
   ORBIT_REGISTRY_URL: "http://registry:5050"
   NEXT_PUBLIC_TEMPORAL_UI_URL: "https://orbit-temporal.hoytlabs.app"
   NEXT_PUBLIC_DOCS_URL: "https://orbit-docs.hoytlabs.app"
+  # Bifrost Kafka gateway config - SNI routing uses per-cluster hostnames
+  BIFROST_ROUTING_MODE: "sni"
+  BIFROST_TLS_ENABLED: "true"
