@@ -34,6 +34,11 @@ spec:
                 secretKeyRef:
                   name: mission-control-secret
                   key: clerk_publishable_key
+            - name: CLERK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: clerk_secret_key
           livenessProbe:
             httpGet:
               path: /
