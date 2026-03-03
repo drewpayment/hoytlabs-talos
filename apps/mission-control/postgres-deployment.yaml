@@ -16,13 +16,10 @@ spec:
       labels:
         app: mission-control-postgres
     spec:
-      initContainers:
-        - name: init-permissions
-          image: busybox:1.36
-          command: ["sh", "-c", "mkdir -p /data/pgdata && chown -R 70:70 /data/pgdata"]
-          volumeMounts:
-            - name: postgres-data
-              mountPath: /data
+      securityContext:
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
       containers:
         - name: postgres
           image: postgres:16-alpine
