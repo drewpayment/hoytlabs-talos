@@ -16,12 +16,21 @@ spec:
       labels:
         app: mission-control-postgres
     spec:
+      initContainers:
+        - name: init-permissions
+          image: busybox:1.36
+          command: ["sh", "-c", "mkdir -p /data/pgdata && chown -R 70:70 /data/pgdata"]
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /data
       containers:
         - name: postgres
           image: postgres:16-alpine
           ports:
             - containerPort: 5432
           env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
             - name: POSTGRES_DB
               valueFrom:
                 configMapKeyRef:
