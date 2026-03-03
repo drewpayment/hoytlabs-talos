@@ -5,7 +5,7 @@ metadata:
 provisioner: nfs.csi.k8s.io
 parameters:
   server: "192.168.86.44"
-  share: "/mnt/tank/appdata/mission-control/postgres"
+  share: "/mnt/tank/db/mission-control"
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
 
@@ -24,7 +24,7 @@ spec:
   storageClassName: mission-control-storage
   nfs:
     server: 192.168.86.44
-    path: /mnt/tank/appdata/mission-control/postgres
+    path: /mnt/tank/db/mission-control
 
 ---
 apiVersion: v1
