@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mission-control-frontend
+  namespace: mission-control
+spec:
+  selector:
+    app: mission-control-frontend
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http

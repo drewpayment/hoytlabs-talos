@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-control-backend
+  namespace: mission-control
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: mission-control-backend
+  template:
+    metadata:
+      labels:
+        app: mission-control-backend
+    spec:
+      serviceAccountName: mission-control
+      containers:
+        - name: backend
+          image: ghcr.io/drewpayment/openclaw-mission-control-backend:latest
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: postgres_password
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@mission-control-postgres:5432/mission_control"
+            - name: RQ_REDIS_URL
+              value: "redis://mission-control-redis:6379/0"
+            - name: CLERK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: clerk_secret_key
+            - name: LOCAL_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: local_auth_token
+          envFrom:
+            - configMapRef:
+                name: mission-control-config
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3

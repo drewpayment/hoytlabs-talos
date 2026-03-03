@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-control-worker
+  namespace: mission-control
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: mission-control-worker
+  template:
+    metadata:
+      labels:
+        app: mission-control-worker
+    spec:
+      serviceAccountName: mission-control
+      containers:
+        - name: worker
+          image: ghcr.io/drewpayment/openclaw-mission-control-backend:latest
+          command: ["python", "scripts/rq-docker", "worker"]
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: postgres_password
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@mission-control-postgres:5432/mission_control"
+            - name: RQ_REDIS_URL
+              value: "redis://mission-control-redis:6379/0"
+            - name: CLERK_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: clerk_secret_key
+            - name: LOCAL_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: local_auth_token
+          envFrom:
+            - configMapRef:
+                name: mission-control-config

@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mission-control-postgres
+  namespace: mission-control
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mission-control-postgres
+  template:
+    metadata:
+      labels:
+        app: mission-control-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: mission-control-config
+                  key: POSTGRES_DB
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mission-control-secret
+                  key: postgres_password
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - $(POSTGRES_DB)
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - $(POSTGRES_USER)
+                - -d
+                - $(POSTGRES_DB)
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: mission-control-postgres-pvc

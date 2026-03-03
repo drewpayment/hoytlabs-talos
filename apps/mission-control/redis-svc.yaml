@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: mission-control-redis
+  namespace: mission-control
+spec:
+  selector:
+    app: mission-control-redis
+  ports:
+    - port: 6379
+      targetPort: 6379
