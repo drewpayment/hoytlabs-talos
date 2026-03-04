@@ -58,3 +58,6 @@ resources:
   - plugins-service-deployment.yaml
   - plugins-service-service.yaml
   - temporal-worker-deployment.yaml
+  - launches-worker-aws-deployment.yaml
+  - launches-worker-gcp-deployment.yaml
+  - launches-worker-azure-deployment.yaml
