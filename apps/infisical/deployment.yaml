@@ -101,6 +101,16 @@ spec:
                 secretKeyRef:
                   name: infisical-secret
                   key: auth_secret
+            - name: SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: infisical-secret
+                  key: smtp_username
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: infisical-secret
+                  key: smtp_password
           readinessProbe:
             httpGet:
               path: /api/status

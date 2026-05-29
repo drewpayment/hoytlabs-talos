@@ -31,6 +31,8 @@ The `infisical-secret` ExternalSecret pulls these keys from the
 | `INFISICAL_AUTH_SECRET` | `openssl rand -base64 32` |
 | `INFISICAL_POSTGRES_USER` | any value, e.g. `infisical` |
 | `INFISICAL_POSTGRES_PASSWORD` | `openssl rand -base64 24` |
+| `INFISICAL_SMTP_USERNAME` | Resend SMTP username — literally `resend` |
+| `INFISICAL_SMTP_PASSWORD` | Resend API key (`re_...`) |
 
 > ⚠️ `ENCRYPTION_KEY` and `AUTH_SECRET` must remain **stable** for the life of
 > the instance. Rotating `ENCRYPTION_KEY` makes existing encrypted data
@@ -38,6 +40,14 @@ The `infisical-secret` ExternalSecret pulls these keys from the
 
 `DB_CONNECTION_URI` and `REDIS_URL` are composed in-manifest from the above
 secret + the ConfigMap, so they are not stored in Doppler.
+
+### Email (SMTP)
+
+Outbound email is sent via Resend (`smtp.resend.com:587`). The host, port,
+`SMTP_FROM_ADDRESS` (`infisical@support.hoytlabs.app`) and `SMTP_FROM_NAME`
+live in `configmap.yaml`; only the username/password are pulled from Doppler.
+Ensure the `support.hoytlabs.app` domain is verified in Resend so mail from
+`infisical@support.hoytlabs.app` is accepted.
 
 ## Prerequisites
 

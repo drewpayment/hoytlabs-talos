@@ -16,3 +16,9 @@ data:
   POSTGRES_DB: "infisical"
   # In-cluster Redis has no auth; safe to keep in the ConfigMap.
   REDIS_URL: "redis://infisical-redis:6379"
+  # SMTP (Resend). Credentials (SMTP_USERNAME/SMTP_PASSWORD) come from the
+  # ExternalSecret. Port 587 uses STARTTLS by default.
+  SMTP_HOST: "smtp.resend.com"
+  SMTP_PORT: "587"
+  SMTP_FROM_ADDRESS: "infisical@support.hoytlabs.app"
+  SMTP_FROM_NAME: "Infisical"
