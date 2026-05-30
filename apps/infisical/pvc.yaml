@@ -6,6 +6,7 @@ provisioner: nfs.csi.k8s.io
 parameters:
   server: "192.168.86.44"
   share: "/mnt/tank/db/infisical"
+  mountOptions: "nolock"
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
 
@@ -14,12 +15,11 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: infisical-postgres-pv
-  namespace: infisical
 spec:
   capacity:
     storage: 10Gi
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: infisical-storage
   nfs:
@@ -34,7 +34,7 @@ metadata:
   namespace: infisical
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   storageClassName: infisical-storage
   resources:
     requests:
