@@ -16,10 +16,10 @@ spec:
       labels:
         app: infisical-postgres
     spec:
-      securityContext:
-        runAsUser: 70
-        runAsGroup: 70
-        fsGroup: 70
+      # No securityContext: the postgres image entrypoint must start as root so
+      # it can create/chown PGDATA on the NFS-backed volume (NFS ignores fsGroup,
+      # and the export root isn't writable by uid 70). It drops to the postgres
+      # user itself afterward. Matches the working orbit postgres pattern.
       containers:
         - name: postgres
           image: postgres:16-alpine
