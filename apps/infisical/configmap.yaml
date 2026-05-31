@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: infisical-config
+  namespace: infisical
+data:
+  NODE_ENV: "production"
+  # Infisical must bind to all interfaces so the in-cluster Service can reach it
+  # (the image defaults HOST to localhost).
+  HOST: "0.0.0.0"
+  PORT: "8080"
+  SITE_URL: "https://infisical.hoytlabs.app"
+  # Disable phone-home telemetry for a self-hosted homelab instance.
+  TELEMETRY_ENABLED: "false"
+  # Database name created by the bundled postgres instance.
+  POSTGRES_DB: "infisical"
+  # In-cluster Redis has no auth; safe to keep in the ConfigMap.
+  REDIS_URL: "redis://infisical-redis:6379"
+  # SMTP (Resend). Credentials (SMTP_USERNAME/SMTP_PASSWORD) come from the
+  # ExternalSecret. Port 587 uses STARTTLS by default.
+  SMTP_HOST: "smtp.resend.com"
+  SMTP_PORT: "587"
+  SMTP_FROM_ADDRESS: "infisical@support.hoytlabs.app"
+  SMTP_FROM_NAME: "Infisical"

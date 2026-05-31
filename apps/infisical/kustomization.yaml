@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: infisical
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - externalsecret.yaml
+  - pvc.yaml
+  - postgres-deployment.yaml
+  - postgres-svc.yaml
+  - redis-deployment.yaml
+  - redis-svc.yaml
+  - deployment.yaml
+  - service.yaml
+  - http-route.yaml

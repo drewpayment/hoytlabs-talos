@@ -1,0 +1,42 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: infisical-storage
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: "192.168.86.44"
+  share: "/mnt/tank/db/infisical"
+  mountOptions: "nolock"
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: infisical-postgres-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: infisical-storage
+  nfs:
+    server: 192.168.86.44
+    path: /mnt/tank/db/infisical
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: infisical-postgres-pvc
+  namespace: infisical
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: infisical-storage
+  resources:
+    requests:
+      storage: 10Gi
+  volumeName: infisical-postgres-pv

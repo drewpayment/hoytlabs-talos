@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: infisical
+  namespace: infisical
+  labels:
+    app: infisical
+spec:
+  type: ClusterIP
+  selector:
+    app: infisical
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
