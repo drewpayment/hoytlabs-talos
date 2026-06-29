@@ -26,58 +26,39 @@ spec:
     requests:
       storage: 10Gi
 ---
+# Single mount of the whole plex share. Downloads + Movies + Television
+# are all directories within ONE ZFS dataset, so hardlinks work across
+# them. Mounted at /data so Sonarr imports hardlink instead of copy
+# (previously /downloads and /tv were separate NFS exports, which
+# forced full copies and doubled disk usage).
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: sonarr-tv-pv
+  name: sonarr-media-pv
 spec:
   capacity:
-    storage: 1Ti
+    storage: 6Ti
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   storageClassName: sonarr-storage
   nfs:
     server: 192.168.86.44
-    path: /mnt/tank/plex/Television
+    path: /mnt/tank/plex
+  claimRef:
+    namespace: sonarr
+    name: sonarr-media
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: sonarr-tv
+  name: sonarr-media
   namespace: sonarr
 spec:
   accessModes:
     - ReadWriteMany
   storageClassName: sonarr-storage
+  volumeName: sonarr-media-pv
   resources:
     requests:
-      storage: 1Ti
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: sonarr-downloads-pv
-spec:
-  capacity:
-    storage: 500Gi
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: sonarr-storage
-  nfs:
-    server: 192.168.86.44
-    path: /mnt/tank/plex/Downloads
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: sonarr-downloads
-  namespace: sonarr
-spec:
-  accessModes:
-    - ReadWriteMany
-  storageClassName: sonarr-storage
-  resources:
-    requests:
-      storage: 500Gi
+      storage: 6Ti

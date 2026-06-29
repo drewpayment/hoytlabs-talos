@@ -39,10 +39,12 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: tv
-              mountPath: /tv
-            - name: downloads
-              mountPath: /downloads
+            # Single shared mount of the whole tank/plex share so that
+            # /data/Downloads and /data/Television live on the SAME mount.
+            # This lets Sonarr hardlink on import (instant, no extra disk)
+            # instead of copying across separate NFS exports.
+            - name: media
+              mountPath: /data
           livenessProbe:
             httpGet:
               path: /
@@ -66,9 +68,6 @@ spec:
         - name: config
           persistentVolumeClaim:
             claimName: sonarr-config
-        - name: tv
+        - name: media
           persistentVolumeClaim:
-            claimName: sonarr-tv
-        - name: downloads
-          persistentVolumeClaim:
-            claimName: sonarr-downloads
+            claimName: sonarr-media

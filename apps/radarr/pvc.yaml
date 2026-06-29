@@ -26,58 +26,39 @@ spec:
     requests:
       storage: 10Gi
 ---
+# Single mount of the whole plex share. Downloads + Movies + Television
+# are all directories within ONE ZFS dataset, so hardlinks work across
+# them. Mounted at /data so Radarr imports hardlink instead of copy
+# (previously /downloads and /movies were separate NFS exports, which
+# forced full copies and doubled disk usage).
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: radarr-movies-pv
+  name: radarr-media-pv
 spec:
   capacity:
-    storage: 1Ti
+    storage: 6Ti
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   storageClassName: radarr-storage
   nfs:
     server: 192.168.86.44
-    path: /mnt/tank/plex/Movies
+    path: /mnt/tank/plex
+  claimRef:
+    namespace: radarr
+    name: radarr-media
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: radarr-movies
+  name: radarr-media
   namespace: radarr
 spec:
   accessModes:
     - ReadWriteMany
   storageClassName: radarr-storage
+  volumeName: radarr-media-pv
   resources:
     requests:
-      storage: 1Ti
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: radarr-downloads-pv
-spec:
-  capacity:
-    storage: 500Gi
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: radarr-storage
-  nfs:
-    server: 192.168.86.44
-    path: /mnt/tank/plex/Downloads
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: radarr-downloads
-  namespace: radarr
-spec:
-  accessModes:
-    - ReadWriteMany
-  storageClassName: radarr-storage
-  resources:
-    requests:
-      storage: 500Gi
+      storage: 6Ti

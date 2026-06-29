@@ -39,10 +39,12 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-            - name: movies
-              mountPath: /movies
-            - name: downloads
-              mountPath: /downloads
+            # Single shared mount of the whole tank/plex share so that
+            # /data/Downloads and /data/Movies live on the SAME mount.
+            # This lets Radarr hardlink on import (instant, no extra disk)
+            # instead of copying across separate NFS exports.
+            - name: media
+              mountPath: /data
           livenessProbe:
             httpGet:
               path: /
@@ -66,9 +68,6 @@ spec:
         - name: config
           persistentVolumeClaim:
             claimName: radarr-config
-        - name: movies
+        - name: media
           persistentVolumeClaim:
-            claimName: radarr-movies
-        - name: downloads
-          persistentVolumeClaim:
-            claimName: radarr-downloads
+            claimName: radarr-media
