@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dozzle
+  namespace: dozzle
+  labels:
+    app.kubernetes.io/name: dozzle
+    app.kubernetes.io/instance: dozzle
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dozzle
+      app.kubernetes.io/instance: dozzle
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: dozzle
+        app.kubernetes.io/instance: dozzle
+    spec:
+      serviceAccountName: dozzle
+      containers:
+        - name: dozzle
+          image: amir20/dozzle:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: DOZZLE_MODE
+              value: "k8s"
+            - name: DOZZLE_AUTH_PROVIDER
+              value: "simple"
+          volumeMounts:
+            - name: auth
+              mountPath: /data/users.yml
+              subPath: users.yml
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthcheck
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: auth
+          secret:
+            secretName: dozzle-auth
