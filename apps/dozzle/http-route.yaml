@@ -16,6 +16,13 @@ spec:
         - path:
             type: PathPrefix
             value: /
+      # Dozzle streams logs over Server-Sent Events (long-lived HTTP responses).
+      # Envoy Gateway applies a default 15s route timeout to the whole
+      # request/response, which severs the SSE stream and makes the UI report
+      # "wasn't able to connect to API". request: 0s disables the route timeout
+      # so the stream can stay open indefinitely.
+      timeouts:
+        request: 0s
       backendRefs:
         - name: dozzle
           port: 8080
