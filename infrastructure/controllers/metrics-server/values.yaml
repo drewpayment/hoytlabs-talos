@@ -1,0 +1,17 @@
+# Talos does not sign kubelet serving certs with the cluster CA by default, so
+# metrics-server cannot verify them over TLS. --kubelet-insecure-tls skips that
+# verification (standard for Talos). The chart's defaultArgs already set a sane
+# --kubelet-preferred-address-types, so we only append the extra flag here.
+args:
+  - --kubelet-insecure-tls
+
+# Metrics are transient; a single replica is fine for a homelab.
+replicas: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 200Mi
