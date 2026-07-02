@@ -89,6 +89,13 @@ spec:
                 secretKeyRef:
                   name: orbit-secrets
                   key: ORBIT_INTERNAL_API_KEY
+            # Shared secret (>=32 bytes) minting per-request service tokens for
+            # gRPC calls to repository-service/kafka-service (enforced there).
+            - name: ORBIT_SVC_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbit-secrets
+                  key: ORBIT_SVC_AUTH_SECRET
             - name: ORBIT_REGISTRY_JWT_SECRET
               valueFrom:
                 secretKeyRef:

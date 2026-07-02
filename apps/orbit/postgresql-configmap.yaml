@@ -9,4 +9,5 @@ data:
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
       CREATE DATABASE temporal;
       CREATE DATABASE orbit;
+      CREATE DATABASE kafka_service;
     EOSQL

@@ -30,6 +30,14 @@ spec:
               value: temporal:7233
             - name: TEMPLATE_WORK_DIR
               value: /tmp/orbit-templates
+            # Required (>=32 bytes) — service exits at startup without it.
+            - name: ORBIT_SVC_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbit-secrets
+                  key: ORBIT_SVC_AUTH_SECRET
+            - name: ORBIT_SVC_AUTH_ENFORCE
+              value: "true"
           resources:
             requests:
               memory: 64Mi
@@ -38,12 +46,14 @@ spec:
               memory: 256Mi
               cpu: 200m
           livenessProbe:
-            tcpSocket:
+            httpGet:
+              path: /health
               port: 8081
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
-            tcpSocket:
+            httpGet:
+              path: /ready
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10

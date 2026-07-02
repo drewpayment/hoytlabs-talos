@@ -38,6 +38,24 @@ spec:
               value: /tmp/orbit-templates
             - name: DEPLOYMENT_WORK_DIR
               value: /tmp/orbit-deployments
+            # Workspace archive storage (non-fatal if unreachable, but the
+            # defaults point at localhost so set them explicitly in-cluster).
+            - name: MINIO_ENDPOINT
+              value: minio:9000
+            - name: MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orbit-secrets
+                  key: MINIO_ROOT_USER
+            - name: MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orbit-secrets
+                  key: MINIO_ROOT_PASSWORD
+            - name: MINIO_BUCKET
+              value: orbit-archives
+            - name: MINIO_USE_SSL
+              value: "false"
           resources:
             requests:
               memory: 128Mi
