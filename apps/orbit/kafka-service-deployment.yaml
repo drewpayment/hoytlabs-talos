@@ -24,6 +24,28 @@ spec:
               value: "50055"
             - name: ENVIRONMENT
               value: production
+            # Required (>=32 bytes) — service exits at startup without it.
+            - name: ORBIT_SVC_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbit-secrets
+                  key: ORBIT_SVC_AUTH_SECRET
+            - name: ORBIT_SVC_AUTH_ENFORCE
+              value: "true"
+            # Postgres is required — the service runs its own migrations in the
+            # kafka_service database (created by the postgresql init script).
+            - name: PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: orbit-secrets
+                  key: POSTGRES_USER
+            - name: PG_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: orbit-secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgres://$(PG_USER):$(PG_PASS)@postgresql:5432/kafka_service?sslmode=disable"
           resources:
             requests:
               memory: 64Mi

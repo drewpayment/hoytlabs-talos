@@ -32,4 +32,6 @@ spec:
                 sleep 5
               done
               mc mb orbit/orbit-registry --ignore-existing
-              echo "Bucket created successfully"
+              mc mb orbit/pulumi-state --ignore-existing
+              mc mb orbit/orbit-archives --ignore-existing
+              echo "Buckets created successfully"
