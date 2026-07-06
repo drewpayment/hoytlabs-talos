@@ -45,3 +45,7 @@ spec:
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+          # Diff through the API server so controller-defaulted fields
+          # (Gateway API HTTPRoute group/kind/weight, Deployment defaults)
+          # stop showing as permanent OutOfSync false-diffs.
+          - ServerSideDiff=true
