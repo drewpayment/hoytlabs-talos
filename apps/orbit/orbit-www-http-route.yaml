@@ -18,3 +18,4 @@ spec:
       backendRefs:
         - name: orbit-www
           port: 3000
+          weight: 1
