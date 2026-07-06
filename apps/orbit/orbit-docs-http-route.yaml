@@ -18,3 +18,4 @@ spec:
       backendRefs:
         - name: orbit-docs
           port: 3002
+          weight: 1
