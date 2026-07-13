@@ -1,7 +1,8 @@
 # The Rain Bird LNK WiFi module NEVER answers broadcast ARP (deep power-save),
 # so any node that may route executor traffic to it needs a permanent neighbor
 # entry. Re-pinned every 60s to survive neighbor-table flushes and reboots.
-# IFACE must match the Talos node's LAN interface (check: talosctl get links).
+# The interface is auto-derived from the kernel route to the module (Talos
+# nodes here use ens18/bond0, not eth0); set IFACE to override.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -23,10 +24,11 @@ spec:
         - operator: Exists # every node, control-plane included
       containers:
         - name: arp-pinner
-          image: busybox:1.36
+          # alpine, not busybox: busybox's ip applet lacks `neigh`
+          image: alpine:3.20
           env:
             - name: IFACE
-              value: eth0
+              value: "" # empty = auto-detect from route to RAINBIRD_IP
             - name: RAINBIRD_IP
               value: "192.168.86.173"
             - name: RAINBIRD_MAC
@@ -35,8 +37,16 @@ spec:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache iproute2 >/dev/null
               while true; do
-                ip neigh replace "$RAINBIRD_IP" lladdr "$RAINBIRD_MAC" dev "$IFACE" nud permanent
+                dev="${IFACE:-$(ip -o route get "$RAINBIRD_IP" | sed -n 's/.* dev \([^ ]*\).*/\1/p')}"
+                if [ -n "$dev" ]; then
+                  ip neigh replace "$RAINBIRD_IP" lladdr "$RAINBIRD_MAC" dev "$dev" nud permanent \
+                    && echo "pinned $RAINBIRD_IP -> $RAINBIRD_MAC on $dev" \
+                    || echo "ERROR: pin failed on dev=$dev"
+                else
+                  echo "ERROR: no route device found for $RAINBIRD_IP"
+                fi
                 sleep 60
               done
           securityContext:
@@ -46,6 +56,6 @@ spec:
           resources:
             requests:
               cpu: 5m
-              memory: 8Mi
-            limits:
               memory: 16Mi
+            limits:
+              memory: 32Mi
