@@ -1,0 +1,67 @@
+# The executor: sole owner of Rain Bird module communication.
+# MUST stay single-replica with Recreate — the LNK module is single-client,
+# and two executors would double-fire schedules.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sprinkler-api
+  namespace: sprinkler
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sprinkler-api
+  template:
+    metadata:
+      labels:
+        app: sprinkler-api
+    spec:
+      serviceAccountName: sprinkler
+      containers:
+        - name: api
+          image: ghcr.io/drewpayment/sprinklergoose-api:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: RAINBIRD_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: sprinkler-config
+                  key: RAINBIRD_HOST
+            - name: SCHEDULE_TIMEZONE
+              valueFrom:
+                configMapKeyRef:
+                  name: sprinkler-config
+                  key: SCHEDULE_TIMEZONE
+            - name: RAINBIRD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sprinkler-secret
+                  key: RAINBIRD_PASSWORD
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sprinkler-secret
+                  key: DATABASE_URL
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi

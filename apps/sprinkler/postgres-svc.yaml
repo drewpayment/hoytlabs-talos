@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sprinkler-postgres
+  namespace: sprinkler
+spec:
+  selector:
+    app: sprinkler-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

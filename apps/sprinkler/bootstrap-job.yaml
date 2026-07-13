@@ -1,0 +1,46 @@
+# Runs drizzle migrations + idempotent seed (admin user, zone rows) after every
+# ArgoCD sync. Safe to re-run: migrations are versioned, seed is upsert-style.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sprinkler-bootstrap
+  namespace: sprinkler
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: sprinkler-bootstrap
+    spec:
+      serviceAccountName: sprinkler
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: ghcr.io/drewpayment/sprinklergoose-bootstrap:latest
+          imagePullPolicy: Always
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sprinkler-secret
+                  key: DATABASE_URL
+            - name: ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: sprinkler-secret
+                  key: ADMIN_EMAIL
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sprinkler-secret
+                  key: ADMIN_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
