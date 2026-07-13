@@ -1,0 +1,51 @@
+# The Rain Bird LNK WiFi module NEVER answers broadcast ARP (deep power-save),
+# so any node that may route executor traffic to it needs a permanent neighbor
+# entry. Re-pinned every 60s to survive neighbor-table flushes and reboots.
+# IFACE must match the Talos node's LAN interface (check: talosctl get links).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: arp-pinner
+  namespace: sprinkler
+  labels:
+    app: arp-pinner
+spec:
+  selector:
+    matchLabels:
+      app: arp-pinner
+  template:
+    metadata:
+      labels:
+        app: arp-pinner
+    spec:
+      hostNetwork: true
+      tolerations:
+        - operator: Exists # every node, control-plane included
+      containers:
+        - name: arp-pinner
+          image: busybox:1.36
+          env:
+            - name: IFACE
+              value: eth0
+            - name: RAINBIRD_IP
+              value: "192.168.86.173"
+            - name: RAINBIRD_MAC
+              value: "4c:a1:61:01:05:15"
+          command:
+            - /bin/sh
+            - -c
+            - |
+              while true; do
+                ip neigh replace "$RAINBIRD_IP" lladdr "$RAINBIRD_MAC" dev "$IFACE" nud permanent
+                sleep 60
+              done
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              memory: 16Mi

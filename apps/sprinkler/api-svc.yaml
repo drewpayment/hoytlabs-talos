@@ -1,0 +1,13 @@
+# ClusterIP only — the executor has no auth of its own and must never be
+# exposed outside the cluster; the web app fronts it with sessions/roles.
+apiVersion: v1
+kind: Service
+metadata:
+  name: sprinkler-api
+  namespace: sprinkler
+spec:
+  selector:
+    app: sprinkler-api
+  ports:
+    - port: 8000
+      targetPort: 8000

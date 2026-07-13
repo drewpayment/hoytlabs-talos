@@ -1,0 +1,26 @@
+# NFS-backed storage for Postgres, matching the mission-control pattern.
+# ⚠️ TrueNAS: create dataset /mnt/tank/db/sprinkler and set the NFS export's
+# Maproot User to root — postgres CrashLoops on permission errors otherwise.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sprinkler-storage
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.86.44
+  share: /mnt/tank/db/sprinkler
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sprinkler-postgres-data
+  namespace: sprinkler
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: sprinkler-storage
+  resources:
+    requests:
+      storage: 5Gi

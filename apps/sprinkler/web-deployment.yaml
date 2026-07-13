@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sprinkler-web
+  namespace: sprinkler
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: sprinkler-web
+  template:
+    metadata:
+      labels:
+        app: sprinkler-web
+    spec:
+      serviceAccountName: sprinkler
+      containers:
+        - name: web
+          image: ghcr.io/drewpayment/sprinklergoose-web:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          env:
+            - name: BETTER_AUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: sprinkler-config
+                  key: BETTER_AUTH_URL
+            - name: TRUSTED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: sprinkler-config
+                  key: TRUSTED_ORIGINS
+            - name: EXECUTOR_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: sprinkler-config
+                  key: EXECUTOR_URL
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sprinkler-secret
+                  key: DATABASE_URL
+            - name: BETTER_AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: sprinkler-secret
+                  key: BETTER_AUTH_SECRET
+          readinessProbe:
+            httpGet:
+              path: /sign-in
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /sign-in
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              memory: 512Mi

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sprinkler-config
+  namespace: sprinkler
+data:
+  # Executor
+  RAINBIRD_HOST: "192.168.86.173"
+  SCHEDULE_TIMEZONE: "America/Detroit"
+  # Web
+  BETTER_AUTH_URL: "https://sprinkler.hoytlabs.app"
+  TRUSTED_ORIGINS: "https://sprinkler.hoytlabs.app"
+  EXECUTOR_URL: "http://sprinkler-api:8000"
+  # Postgres
+  POSTGRES_DB: "sprinkler"
