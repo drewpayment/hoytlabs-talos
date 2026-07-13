@@ -1,4 +1,8 @@
+# privileged PSS: required by the arp-pinner DaemonSet (hostNetwork + NET_ADMIN)
+# so nodes can pin the Rain Bird module's neighbor entry. Same pattern as orbit.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: sprinkler
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
