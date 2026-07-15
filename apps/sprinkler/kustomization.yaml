@@ -27,8 +27,8 @@ resources:
 # roll the deployments and re-run the PostSync bootstrap (migrate+seed) Job.
 images:
   - name: ghcr.io/drewpayment/sprinklergoose-api
-    newTag: e543ee8efbc3bf650d0ea652e445811ddae99d97
+    newTag: 06a27bd79fde2646d4296a4fa1b02c4639b8e458
   - name: ghcr.io/drewpayment/sprinklergoose-web
-    newTag: e543ee8efbc3bf650d0ea652e445811ddae99d97
+    newTag: 06a27bd79fde2646d4296a4fa1b02c4639b8e458
   - name: ghcr.io/drewpayment/sprinklergoose-bootstrap
-    newTag: e543ee8efbc3bf650d0ea652e445811ddae99d97
+    newTag: 06a27bd79fde2646d4296a4fa1b02c4639b8e458
