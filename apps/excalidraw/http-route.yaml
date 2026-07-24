@@ -1,0 +1,22 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: excalidraw
+  namespace: excalidraw
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: excalidraw.hoytlabs.app
+spec:
+  parentRefs:
+    - name: gateway-external
+      namespace: gateway
+  hostnames:
+    - excalidraw.hoytlabs.app
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: excalidraw
+          port: 80
+          weight: 1
