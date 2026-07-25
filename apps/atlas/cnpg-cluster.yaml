@@ -1,11 +1,26 @@
 # CloudNativePG Cluster. Requires the CNPG operator (and its CRDs) to be
-# installed first via infrastructure/controllers/cloudnative-pg/ - the infra
-# ApplicationSet syncs at wave -2, ahead of this app's wave 1, so ordering is
-# handled by ArgoCD's sync-wave model. ServerSideApply=true (set on both
-# ApplicationSets) lets the API server accept this manifest even before the
-# CRD is fully Established on a cold multi-app sync; if the very first sync
-# still races the operator install, ArgoCD's configured retry (limit 2,
-# up to ~3m backoff) resolves it without manual intervention.
+# installed first via infrastructure/controllers/cloudnative-pg/.
+#
+# CRD-ordering, corrected: the sync-wave annotations (-2 on infra, 1 on
+# apps) live on the two ApplicationSet objects themselves, NOT on the
+# generated per-directory Applications - ApplicationSets don't propagate
+# sync-wave to what they generate, so nothing actually orders the
+# "cloudnative-pg" Application before the "atlas" Application. And
+# ServerSideApply does NOT tolerate an unknown GVK: a Cluster CR applied
+# before the CRD exists is hard-rejected, not deferred.
+#
+# What actually makes this converge instead of wedging: selfHeal: true on
+# the apps ApplicationSet's syncPolicy keeps re-driving the atlas
+# Application's sync until it succeeds. Each retry re-applies the same
+# desired state, so once the cloudnative-pg Application has installed the
+# CRDs and the operator pod is Ready (its ValidatingWebhookConfiguration is
+# failurePolicy: Fail, backed by a self-signed cert the operator patches in
+# at startup - so the webhook itself gates until the operator is actually
+# up, not just CRD-Established), a subsequent selfHeal pass applies cleanly.
+# Convergence is minutes, not a permanent failure, and prune can't destroy
+# a Cluster that was never successfully created. SkipDryRunOnMissingResource
+# below quiets the noisy "no matches for kind Cluster" dry-run errors on the
+# syncs before that point.
 #
 # Explicit database/owner (not the chart default "app"/"app") so the
 # generated connection semantics are obvious to the app engineer:
@@ -17,6 +32,8 @@ kind: Cluster
 metadata:
   name: atlas-db
   namespace: atlas
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
   instances: 1
   imageName: ghcr.io/cloudnative-pg/postgresql:17.10
@@ -28,7 +45,7 @@ spec:
 
   storage:
     size: 2Gi
-    storageClass: openebs-hostpath
+    storageClass: atlas-db-storage
 
   resources:
     requests:

@@ -31,14 +31,24 @@ All under `apps/atlas/`:
 - `externalsecret.yaml` — Doppler secrets via `doppler-cluster-secret-store`:
   `BETTER_AUTH_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` into Secret
   `atlas-secret`. `DATABASE_URL` is deliberately **not** here — CNPG owns it.
+- `storageclass.yaml` — app-owned `atlas-db-storage` (openebs local
+  provisioner, same `BasePath` as the cluster-default `openebs-hostpath`,
+  but `reclaimPolicy: Retain` instead of `Delete` — see Storage below).
 - `cnpg-cluster.yaml` — CNPG `Cluster` `atlas-db`, 1 instance, PostgreSQL
-  17.10, 2Gi on `openebs-hostpath`, explicit `bootstrap.initdb`
+  17.10, 2Gi on `atlas-db-storage`, explicit `bootstrap.initdb`
   (`database: atlas`, `owner: atlas`). Auto-creates Secret `atlas-db-app` with
   connection keys, notably `uri`.
 - `bootstrap-job.yaml` — ArgoCD PostSync hook Job running drizzle migrate +
-  idempotent seed, same pattern as `sprinkler-bootstrap`.
-- `web-deployment.yaml` — Next.js server, probes on `/api/health:3000`,
-  sprinkler-sized resources (50m/192Mi req, 512Mi limit).
+  a check-then-skip seed (admin user), same pattern as `sprinkler-bootstrap`.
+  Not upsert: rotating `ADMIN_PASSWORD` in Doppler and resyncing does not
+  change an already-seeded admin's password.
+- `web-deployment.yaml` — Next.js server. Readiness on `/api/health:3000`
+  (DB-backed `select 1`, correctly gates traffic and works pre-migration);
+  liveness on `/login:3000` (DB-free — see the in-file comment for why a
+  single-instance CNPG cluster makes a DB-backed liveness probe dangerous).
+  Sprinkler-sized resources (50m/192Mi req, 512Mi limit); container
+  `securityContext` (`runAsNonRoot`, drop `ALL` caps, no privilege
+  escalation, `RuntimeDefault` seccomp).
 - `web-svc.yaml` — ClusterIP `3000 -> 3000` (matches sprinkler's actual
   convention; sprinkler does not front its web Service on port 80).
 - `http-route.yaml` — Gateway API HTTPRoute, `atlas.hoytlabs.app`, parent
@@ -67,25 +77,38 @@ hand-written ArgoCD `Application`.
 
 ### CRD-before-CR ordering
 
-The Atlas app's `cnpg-cluster.yaml` (`Cluster` CRD) lives in a *separate*
-ArgoCD Application (`apps/atlas`, sync-wave `1`) from the operator install
-(`infrastructure/controllers/cloudnative-pg`, sync-wave `-2`). Both
-ApplicationSets set `ServerSideApply=true`; the apps ApplicationSet also has
-`retry: {limit: 2, backoff: {duration: 5s, factor: 2, maxDuration: 3m}}`.
-There is no existing in-repo precedent for a brand-new operator + a CR
-consuming it in the very first commit (the only CRD-ordering precedent,
-`cert-manager`'s `cluster-issuer.yaml`, ships in the *same* Application as the
-operator and uses a per-resource `commonAnnotations` sync-wave override to
-sequence within that Application — not applicable here since our CRD and CR
-are already in different Applications/waves).
+The Atlas app's `cnpg-cluster.yaml` (`Cluster` CR) lives in a *separate*
+ArgoCD Application (`apps/atlas`) from the operator install
+(`infrastructure/controllers/cloudnative-pg`). **Correction from an earlier
+draft of this doc:** the `sync-wave: "-2"` / `"-2"`-style annotations on
+`infrastructure/appset.yaml` and `apps/appset.yaml` sit on the
+**ApplicationSet objects themselves**, not on the per-directory Applications
+they generate — ApplicationSets do not propagate that annotation down, so
+there is no actual ordering guarantee between the `cloudnative-pg`
+Application and the `atlas` Application. `ServerSideApply=true` does not
+help either: the API server hard-rejects a `Cluster` manifest against a GVK
+that isn't registered yet, it doesn't defer or queue it.
 
-Expectation: on a clean sync, infra wave `-2` completes (CNPG CRDs
-`Established`) before the apps wave `1` starts, so `atlas`'s Cluster should
-apply cleanly. If ArgoCD fans out the two ApplicationSets closer together than
-strict wave ordering suggests, the apps retry policy (2 retries, up to 3m
-backoff) should absorb a transient "no matches for kind Cluster" error.
-**Manual step if it doesn't self-heal:** re-run sync on the `atlas` app once
-`cloudnative-pg` is `Healthy`.
+What actually makes this converge instead of wedging: `apps/appset.yaml`'s
+`syncPolicy.automated.selfHeal: true` keeps re-driving the `atlas`
+Application's sync on a loop until it succeeds. If the first attempt lands
+before `cloudnative-pg` has installed the CRDs (or before the operator pod
+is `Ready` — its `ValidatingWebhookConfiguration` is `failurePolicy: Fail`,
+backed by a self-signed cert the operator generates and patches into the
+webhook config at startup, so the webhook itself gates admission until the
+operator is genuinely up, not merely until the CRD is `Established`), that
+sync attempt fails cleanly and selfHeal retries it. No resources are ever
+successfully created on a failed attempt, so `prune: true` has nothing to
+tear down in the interim. Convergence is on the order of minutes once
+`cloudnative-pg` reaches `Healthy`, not a permanent failure requiring
+intervention. `cnpg-cluster.yaml` carries
+`argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true` to quiet
+the "no matches for kind Cluster" dry-run noise on the syncs before that
+point.
+
+**Manual step only if it doesn't self-heal within a few minutes:** check
+`cloudnative-pg` Application health first (operator pod `Ready`, CRDs
+present), then re-run sync on the `atlas` Application.
 
 ## Networking
 
@@ -107,15 +130,40 @@ CNPG-generated `atlas-db-app` Secret's `uri` key.
 
 ## Storage
 
-- Postgres: `openebs-hostpath` StorageClass (local disk; confirmed as the
-  StorageClass name actually provisioned by
-  `infrastructure/storage/openebs/values.yaml`'s LocalPV Hostpath engine).
-  Chosen over NFS to avoid the documented TrueNAS `Maproot` CrashLoop gotcha
+- Postgres: app-owned `atlas-db-storage` StorageClass
+  (`apps/atlas/storageclass.yaml`), not the cluster-default
+  `openebs-hostpath` directly. Same provisioner (`openebs.io/local`) and
+  `BasePath` (`/var/openebs/local`, confirmed against the rendered output of
+  `infrastructure/storage/openebs/`) — the only difference is
+  `reclaimPolicy: Retain` instead of `openebs-hostpath`'s `Delete`. This app
+  syncs with `prune: true`; on `Delete` reclaim, a pruned-and-recreated
+  `Cluster` CR (e.g. from a bad manifest edit, or the ArgoCD selfHeal loop
+  described above misfiring) would silently delete the underlying PV and the
+  database with it. `Retain` means a deleted PVC/PV leaves the hostpath data
+  on disk for manual recovery instead of destroying it. Local disk (over
+  NFS) chosen to avoid the documented TrueNAS `Maproot` CrashLoop gotcha
   entirely and because local disk suits Postgres better on this cluster.
+
+### Accepted debt (M1)
+
+This is a single-instance CNPG cluster on node-local (`openebs-hostpath`
+provisioner) storage: **no replicas, no streaming standby, no backups
+configured, and the pod is pinned to whichever node its PV was created on**
+— if that node goes down, the database goes down with it until the node
+comes back, full stop. There is currently no automated backup path (no
+`Backup`/`ScheduledBackup` CR, no barman-object-store or volume-snapshot
+config); the restore path today is manual: recreate the `Cluster` from the
+`Retain`-ed PV if the node recovers, or recreate + re-seed via
+`bootstrap-job.yaml` + restore application data from a manually-taken `pg_dump`
+if it doesn't. This is acceptable for M1's walking-skeleton scope but is real
+production risk that a later milestone should close (at minimum: a
+scheduled `pg_dump` CronJob to off-cluster storage before Atlas holds any
+data anyone would be upset to lose).
 
 ## Health Checks
 
-Web: `GET /api/health` (readiness + liveness, port 3000)
+Web: readiness `GET /api/health` (DB-backed, gates traffic); liveness
+`GET /login` (DB-free, port 3000 — see rationale in `web-deployment.yaml`).
 
 ## Release flow
 

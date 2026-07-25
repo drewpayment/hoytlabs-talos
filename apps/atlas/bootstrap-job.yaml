@@ -1,6 +1,9 @@
 # Runs drizzle migrations + idempotent seed (admin user, fixture data) after
-# every ArgoCD sync. Safe to re-run: migrations are versioned, seed is
-# upsert-style. Same pattern as sprinkler-bootstrap.
+# every ArgoCD sync. Safe to re-run: migrations are versioned, and the seed
+# is check-then-skip (it looks for the admin user by email and does nothing
+# if found) - NOT upsert. Rotating ADMIN_PASSWORD in Doppler and letting
+# this Job re-run will NOT change the existing admin's password; that
+# requires a manual update, not a resync. Same pattern as sprinkler-bootstrap.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -39,6 +42,13 @@ spec:
                 secretKeyRef:
                   name: atlas-secret
                   key: ADMIN_PASSWORD
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               cpu: 100m
