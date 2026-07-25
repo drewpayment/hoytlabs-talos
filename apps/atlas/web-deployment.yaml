@@ -39,6 +39,11 @@ spec:
                 configMapKeyRef:
                   name: atlas-config
                   key: NODE_ENV
+            - name: TRUSTED_PROXIES
+              valueFrom:
+                configMapKeyRef:
+                  name: atlas-config
+                  key: TRUSTED_PROXIES
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
