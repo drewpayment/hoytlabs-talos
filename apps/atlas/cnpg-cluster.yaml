@@ -1,0 +1,38 @@
+# CloudNativePG Cluster. Requires the CNPG operator (and its CRDs) to be
+# installed first via infrastructure/controllers/cloudnative-pg/ - the infra
+# ApplicationSet syncs at wave -2, ahead of this app's wave 1, so ordering is
+# handled by ArgoCD's sync-wave model. ServerSideApply=true (set on both
+# ApplicationSets) lets the API server accept this manifest even before the
+# CRD is fully Established on a cold multi-app sync; if the very first sync
+# still races the operator install, ArgoCD's configured retry (limit 2,
+# up to ~3m backoff) resolves it without manual intervention.
+#
+# Explicit database/owner (not the chart default "app"/"app") so the
+# generated connection semantics are obvious to the app engineer:
+#   - Secret:  atlas-db-app  (auto-created by CNPG)
+#   - Key:     uri            -> postgresql://atlas:<password>@atlas-db-rw:5432/atlas
+#   - Host:    atlas-db-rw    (CNPG read-write Service, DNS-resolvable in-namespace)
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: atlas-db
+  namespace: atlas
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.10
+
+  bootstrap:
+    initdb:
+      database: atlas
+      owner: atlas
+
+  storage:
+    size: 2Gi
+    storageClass: openebs-hostpath
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi

@@ -1,0 +1,47 @@
+# Runs drizzle migrations + idempotent seed (admin user, fixture data) after
+# every ArgoCD sync. Safe to re-run: migrations are versioned, seed is
+# upsert-style. Same pattern as sprinkler-bootstrap.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: atlas-bootstrap
+  namespace: atlas
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: atlas-bootstrap
+    spec:
+      serviceAccountName: atlas
+      restartPolicy: Never
+      containers:
+        - name: bootstrap
+          image: ghcr.io/drewpayment/atlas-bootstrap:latest
+          imagePullPolicy: Always
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-db-app
+                  key: uri
+            - name: ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-secret
+                  key: ADMIN_EMAIL
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-secret
+                  key: ADMIN_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi

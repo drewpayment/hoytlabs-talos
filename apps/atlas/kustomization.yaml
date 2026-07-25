@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: atlas
+resources:
+  # Core
+  - namespace.yaml
+  - serviceaccount.yaml
+  - configmap.yaml
+  - externalsecret.yaml
+  # Data layer (CloudNativePG operator must already be installed via
+  # infrastructure/controllers/cloudnative-pg/ - see cnpg-cluster.yaml)
+  - cnpg-cluster.yaml
+  # Application services
+  - bootstrap-job.yaml
+  - web-deployment.yaml
+  - web-svc.yaml
+  # Networking
+  - http-route.yaml
+
+# Release pinning (GitOps deploy): bump newTag to the atlas merge commit SHA
+# after CI pushes images. The tag change is what makes ArgoCD roll the
+# deployment and re-run the PostSync bootstrap (migrate+seed) Job.
+images:
+  - name: ghcr.io/drewpayment/atlas-web
+    newTag: latest
+  - name: ghcr.io/drewpayment/atlas-bootstrap
+    newTag: latest

@@ -1,0 +1,21 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: atlas-http-route
+  namespace: atlas
+  annotations:
+    external-dns.alpha.kubernetes.io/hostname: atlas.hoytlabs.app
+spec:
+  parentRefs:
+    - name: gateway-external
+      namespace: gateway
+  hostnames: ["atlas.hoytlabs.app"]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: atlas-web
+          port: 3000
+          weight: 1
