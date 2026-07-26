@@ -47,8 +47,8 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: atlas-db-app
-                  key: uri
+                  name: atlas-secret
+                  key: DATABASE_URL
             - name: BETTER_AUTH_SECRET
               valueFrom:
                 secretKeyRef:
