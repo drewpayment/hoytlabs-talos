@@ -24,11 +24,10 @@ resources:
 # after CI pushes images. The tag change is what makes ArgoCD roll the
 # deployment and re-run the PostSync bootstrap (migrate+seed) Job.
 #
-# DO NOT MERGE with newTag: latest still in place - replace both with the
-# FULL 40-char SHA of the atlas main merge commit before this goes to main.
-# Short SHAs won't resolve (CI tags images with the full ${{ github.sha }}).
+# Always the FULL 40-char SHA - short SHAs won't resolve, since CI tags
+# images with the full ${{ github.sha }}.
 images:
   - name: ghcr.io/drewpayment/atlas-web
-    newTag: latest
+    newTag: fc14e96b1aa83eccdddcc3b2b2f904c936799c00
   - name: ghcr.io/drewpayment/atlas-bootstrap
-    newTag: latest
+    newTag: fc14e96b1aa83eccdddcc3b2b2f904c936799c00
