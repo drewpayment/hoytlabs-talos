@@ -7,10 +7,6 @@ resources:
   - serviceaccount.yaml
   - configmap.yaml
   - externalsecret.yaml
-  # Data layer (CloudNativePG operator must already be installed via
-  # infrastructure/controllers/cloudnative-pg/ - see cnpg-cluster.yaml)
-  - storageclass.yaml
-  - cnpg-cluster.yaml
   # Application services
   - bootstrap-job.yaml
   - web-deployment.yaml
