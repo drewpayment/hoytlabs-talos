@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: atlas-purge-trash
+  namespace: atlas
+spec:
+  # Trash has a 30-day retention window, so a single daily pass at 03:00
+  # comfortably covers it. The endpoint is idempotent and safe to run
+  # concurrently (DELETE...RETURNING never double-purges or double-logs),
+  # so a missed or doubled run is harmless.
+  schedule: "0 3 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: atlas
+          containers:
+            - name: purge-trash
+              image: curlimages/curl:8.11.1
+              env:
+                - name: CRON_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-secret
+                      key: CRON_SECRET
+              # Hits the in-cluster Service rather than https://atlas.hoytlabs.app:
+              # this route authenticates with a static bearer token, not a
+              # session cookie, so it needs no origin/TLS handling - and going
+              # direct keeps the nightly job off the Cloudflare tunnel and
+              # working even if external DNS or the gateway is down.
+              #
+              # -f makes curl exit non-zero on a non-2xx so the Job retries;
+              # the token is passed via env (never an argv literal, which
+              # would be visible in `kubectl describe pod`).
+              command:
+                - sh
+                - -c
+                - >-
+                  curl -fsS --max-time 120
+                  -X POST
+                  -H "Authorization: Bearer ${CRON_SECRET}"
+                  http://atlas-web.atlas.svc.cluster.local:3000/api/cron/purge-trash
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 65534
+                allowPrivilegeEscalation: false
+                seccompProfile:
+                  type: RuntimeDefault
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi

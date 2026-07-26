@@ -1,0 +1,17 @@
+# values.yaml - CloudNativePG operator, homelab-sized.
+# Chart default already includes the operator's CRDs (Cluster, Pooler,
+# Backup, ScheduledBackup, etc.) via templates/crds/, gated by crds.create.
+# Kept explicit here since apps/atlas/cnpg-cluster.yaml depends on the
+# Cluster CRD being installed before its ArgoCD Application (wave 1) syncs.
+crds:
+  create: true
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 100Mi
+  limits:
+    memory: 256Mi
+
+# No Prometheus Operator installed in this cluster today (podMonitorEnabled
+# already defaults to false upstream) - left unset intentionally.

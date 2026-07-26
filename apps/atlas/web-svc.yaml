@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: atlas-web
+  namespace: atlas
+spec:
+  selector:
+    app: atlas-web
+  ports:
+    - port: 3000
+      targetPort: 3000

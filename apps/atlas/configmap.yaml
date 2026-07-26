@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atlas-config
+  namespace: atlas
+data:
+  BETTER_AUTH_URL: "https://atlas.hoytlabs.app"
+  TRUSTED_ORIGINS: "https://atlas.hoytlabs.app"
+  NODE_ENV: "production"
+  # better-auth's rate limiter resolves the real client IP by walking
+  # X-Forwarded-For right-to-left past entries appended by trusted proxies.
+  # Traffic path: cloudflared (DaemonSet, no hostNetwork -> gets a pod IP)
+  # -> envoy-gateway-system data-plane pods (gateway-external, reached via
+  # in-cluster Service DNS, not the external LB IP) -> this app's pod. Both
+  # XFF-appending hops are cluster pods, so the Talos/Cilium pod CIDR
+  # (10.244.0.0/16 - confirmed identical across every node config under
+  # infrastructure/talos-cluster/talos/*.yaml) covers them; the cluster's
+  # LoadBalancer IP pool (192.168.86.208/28) is NOT in this path and is
+  # intentionally excluded.
+  #
+  # KNOWN M1 LIMITATION: cloudflared itself runs in-cluster (same pod CIDR),
+  # so trusting this range also walks past whatever XFF value cloudflared
+  # forwards. cloudflared's config already carries the real edge client IP
+  # in Cloudflare-specific headers (CF-Connecting-IP / True-Client-IP), not
+  # XFF - so for Cloudflare-fronted traffic, XFF-based resolution is not
+  # fully authoritative even with this trusted set. Not solved here; a
+  # later milestone should have the app prefer CF-Connecting-IP when present
+  # instead of only trusting XFF via TRUSTED_PROXIES.
+  TRUSTED_PROXIES: "10.244.0.0/16"
