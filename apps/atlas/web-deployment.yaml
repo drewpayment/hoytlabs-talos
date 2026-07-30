@@ -20,7 +20,7 @@ spec:
         # only reads those at container start - editing the ConfigMap/Secret
         # alone leaves running pods on the old values. Bump this whenever a
         # mail-related value changes so ArgoCD's sync actually rolls the pod.
-        hoytlabs.app/mail-config-rev: "resend-support-hoytlabs-app-1"
+        hoytlabs.app/mail-config-rev: "resend-support-hoytlabs-app-2"
     spec:
       serviceAccountName: atlas
       containers:
