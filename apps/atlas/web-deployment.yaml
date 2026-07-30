@@ -15,6 +15,12 @@ spec:
     metadata:
       labels:
         app: atlas-web
+      annotations:
+        # Env comes from atlas-config/atlas-secret by reference, and Kubernetes
+        # only reads those at container start - editing the ConfigMap/Secret
+        # alone leaves running pods on the old values. Bump this whenever a
+        # mail-related value changes so ArgoCD's sync actually rolls the pod.
+        hoytlabs.app/mail-config-rev: "resend-support-hoytlabs-app-1"
     spec:
       serviceAccountName: atlas
       containers:
