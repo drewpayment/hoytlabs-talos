@@ -27,15 +27,12 @@ data:
   # later milestone should have the app prefer CF-Connecting-IP when present
   # instead of only trusting XFF via TRUSTED_PROXIES.
   TRUSTED_PROXIES: "10.244.0.0/16"
-  # M5 mail transport (atlas PR #2). `console` prints mail to the pod log
-  # instead of sending - a safe no-op that matches pre-M5 behavior. To turn
-  # real mail on:
-  #   1. Verify a sending domain in Resend (SPF/DKIM) matching
-  #      ATLAS_EMAIL_FROM below.
-  #   2. Add ATLAS_RESEND_API_KEY in Doppler, then uncomment its block in
-  #      externalsecret.yaml.
-  #   3. Flip this to "resend".
-  # The deployment's secretKeyRef for the API key is `optional: true`, so
-  # this file merges safely before any of that exists.
-  ATLAS_EMAIL_DRIVER: "console"
-  ATLAS_EMAIL_FROM: "Atlas <atlas@mail.hoytlabs.app>"
+  # M5 mail transport (atlas PR #2), live on Resend. The FROM domain must be
+  # the one verified in Resend (DKIM at resend._domainkey.support.hoytlabs.app,
+  # SES feedback MX on send.support.hoytlabs.app - both confirmed in DNS);
+  # Resend rejects sends from any other domain. The API key comes from Doppler
+  # via externalsecret.yaml. To disable mail (back to logging links in the pod
+  # log), flip this to "console" - and bump the mail-config-rev annotation in
+  # web-deployment.yaml, since ConfigMap edits alone don't restart pods.
+  ATLAS_EMAIL_DRIVER: "resend"
+  ATLAS_EMAIL_FROM: "Atlas <atlas@support.hoytlabs.app>"
