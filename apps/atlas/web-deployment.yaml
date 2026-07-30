@@ -54,6 +54,28 @@ spec:
                 secretKeyRef:
                   name: atlas-secret
                   key: BETTER_AUTH_SECRET
+            # M5 mail transport - see configmap.yaml for the resend turn-on
+            # checklist. The API key is optional so the pod schedules while the
+            # driver is `console` and the Doppler key doesn't exist yet; once
+            # the driver flips to `resend` the app fails loudly per send (and
+            # logs the reason) if the key is still missing, rather than at
+            # startup.
+            - name: ATLAS_EMAIL_DRIVER
+              valueFrom:
+                configMapKeyRef:
+                  name: atlas-config
+                  key: ATLAS_EMAIL_DRIVER
+            - name: ATLAS_EMAIL_FROM
+              valueFrom:
+                configMapKeyRef:
+                  name: atlas-config
+                  key: ATLAS_EMAIL_FROM
+            - name: ATLAS_RESEND_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-secret
+                  key: ATLAS_RESEND_API_KEY
+                  optional: true
           readinessProbe:
             httpGet:
               path: /api/health
