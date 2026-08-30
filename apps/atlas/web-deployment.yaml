@@ -82,6 +82,17 @@ spec:
                   name: atlas-secret
                   key: ATLAS_RESEND_API_KEY
                   optional: true
+            # atlas PR #3: canvas images live in a private Vercel Blob store
+            # instead of inside the scene JSON column. Optional for the same
+            # reason as the Resend key above - the app treats an absent token
+            # as "image storage not configured" and falls back to embedding
+            # images in the scene, so the pod still schedules and serves.
+            - name: ATLAS_BLOB_READ_WRITE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-secret
+                  key: ATLAS_BLOB_READ_WRITE_TOKEN
+                  optional: true
           readinessProbe:
             httpGet:
               path: /api/health
