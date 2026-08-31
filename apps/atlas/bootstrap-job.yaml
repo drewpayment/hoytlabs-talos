@@ -1,16 +1,33 @@
-# Runs drizzle migrations + idempotent seed (admin user, fixture data) after
-# every ArgoCD sync. Safe to re-run: migrations are versioned, and the seed
-# is check-then-skip (it looks for the admin user by email and does nothing
-# if found) - NOT upsert. Rotating ADMIN_PASSWORD in Doppler and letting
-# this Job re-run will NOT change the existing admin's password; that
-# requires a manual update, not a resync. Same pattern as sprinkler-bootstrap.
+# Provisions atlas's database prerequisites, runs drizzle migrations, then the
+# idempotent seed - on every ArgoCD sync. Safe to re-run: db:ensure converges
+# rather than recreating, migrations are versioned, and the seed is
+# check-then-skip (it looks for the admin user by email and does nothing if
+# found) - NOT upsert. Rotating ADMIN_PASSWORD in Doppler and letting this Job
+# re-run will NOT change the existing admin's password; that requires a manual
+# update, not a resync.
+#
+# PreSync, NOT PostSync (which is what sprinkler-bootstrap uses, and what this
+# used until it deadlocked in the 2026-08-30 recovery):
+#
+# ArgoCD will not start PostSync hooks until every sync-phase resource reports
+# healthy. atlas-web only becomes healthy once it can reach its database - and
+# after the shared Postgres lost its data directory, atlas's role no longer
+# existed, so it never could. The Job that recreates the role was the PostSync
+# hook, which was waiting on the Deployment, which was waiting on the role.
+# The sync sat at "waiting for healthy state of apps/Deployment/atlas-web"
+# indefinitely and the self-healing provisioning never got to run.
+#
+# PreSync inverts that: the database is made ready *before* the new pods roll,
+# so the very scenario db:ensure exists for is one it can actually recover.
+# It also means a failed migration aborts the sync before any new pod is
+# rolled out, rather than after.
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: atlas-bootstrap
   namespace: atlas
   annotations:
-    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 3
