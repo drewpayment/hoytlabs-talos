@@ -42,6 +42,24 @@ spec:
                 secretKeyRef:
                   name: atlas-secret
                   key: ADMIN_PASSWORD
+            # Postgres server superuser, for the db:ensure step only - it
+            # creates atlas's role/database when they're missing and keeps the
+            # role password in step with DATABASE_URL. Scoped to this Job on
+            # purpose: the web pod is internet-facing and has no reason to
+            # hold a credential that can create roles. Optional so the Job
+            # still runs (and just skips provisioning) if the keys are absent.
+            - name: ATLAS_DB_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-secret
+                  key: ATLAS_DB_ADMIN_USER
+                  optional: true
+            - name: ATLAS_DB_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-secret
+                  key: ATLAS_DB_ADMIN_PASSWORD
+                  optional: true
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
