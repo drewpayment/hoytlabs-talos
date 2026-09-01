@@ -1,0 +1,64 @@
+# Celery's scheduler. Must stay at exactly one replica: a second beat would
+# double-fire every periodic task, since it holds no lock of its own.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: surfsense-beat
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: surfsense-beat
+  template:
+    metadata:
+      labels:
+        app: surfsense-beat
+    spec:
+      containers:
+        - name: beat
+          image: ghcr.io/modsetter/surfsense-backend:0.0.39
+          envFrom:
+            - configMapRef:
+                name: surfsense-config
+          env:
+            - name: SERVICE_ROLE
+              value: beat
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_password
+            - name: DATABASE_URL
+              value: postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@surfsense-postgres:5432/surfsense
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: secret_key
+            - name: CELERY_BROKER_URL
+              value: redis://surfsense-redis:6379/0
+            - name: CELERY_RESULT_BACKEND
+              value: redis://surfsense-redis:6379/0
+          securityContext:
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 512Mi
+            limits:
+              memory: 1Gi

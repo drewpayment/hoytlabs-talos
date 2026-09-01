@@ -1,0 +1,95 @@
+# From docker/searxng/settings.yml upstream. SearXNG is the backend's web-search
+# tool; without it, search-grounded answers silently degrade.
+#
+# server.secret_key below is a placeholder - SearXNG reads the SEARXNG_SECRET
+# env var (wired from Doppler in searxng-deployment.yaml) and that wins.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: surfsense-searxng-config
+  namespace: surfsense
+data:
+  settings.yml: |
+    use_default_settings:
+      engines:
+        remove:
+          - ahmia
+          - torch
+          - qwant
+          - qwant news
+          - qwant images
+          - qwant videos
+          - mojeek
+          - mojeek images
+          - mojeek news
+
+    server:
+      secret_key: "override-me-via-env"
+      limiter: false
+      image_proxy: false
+      method: "GET"
+      default_http_headers:
+        X-Robots-Tag: "noindex, nofollow"
+
+    search:
+      # Dropping 'json' makes every fallback request from the backend 403.
+      formats:
+        - html
+        - json
+      default_lang: "auto"
+      autocomplete: ""
+      safe_search: 0
+      ban_time_on_fail: 5
+      max_ban_time_on_fail: 120
+      suspended_times:
+        SearxEngineAccessDenied: 3600
+        SearxEngineCaptcha: 3600
+        SearxEngineTooManyRequests: 600
+        cf_SearxEngineCaptcha: 7200
+        cf_SearxEngineAccessDenied: 3600
+        recaptcha_SearxEngineCaptcha: 7200
+
+    ui:
+      static_use_hash: true
+
+    outgoing:
+      request_timeout: 12.0
+      max_request_timeout: 20.0
+      pool_connections: 100
+      pool_maxsize: 20
+      enable_http2: true
+      extra_proxy_timeout: 10
+      retries: 1
+
+    engines:
+      - name: google
+        disabled: true
+      - name: duckduckgo
+        disabled: false
+        weight: 1.1
+        retry_on_http_error: [429, 503]
+      - name: brave
+        disabled: false
+        weight: 1.0
+        retry_on_http_error: [429, 503]
+      - name: bing
+        disabled: false
+        weight: 0.9
+        retry_on_http_error: [429, 503]
+      - name: wikipedia
+        disabled: false
+        weight: 0.8
+      - name: stackoverflow
+        disabled: false
+        weight: 0.7
+      - name: yahoo
+        disabled: false
+        weight: 0.7
+        retry_on_http_error: [429, 503]
+      - name: wikidata
+        disabled: false
+        weight: 0.6
+      - name: currency
+        disabled: false
+      - name: ddg definitions
+        disabled: false

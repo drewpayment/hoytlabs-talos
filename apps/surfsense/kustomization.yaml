@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: surfsense
+
+resources:
+  # Core
+  - namespace.yaml
+  - configmap.yaml
+  - postgres-configmap.yaml
+  - searxng-configmap.yaml
+  - externalsecret.yaml
+  # Data layer (sync-wave 0)
+  - pvc.yaml
+  - postgres-deployment.yaml
+  - postgres-svc.yaml
+  - redis-deployment.yaml
+  - redis-svc.yaml
+  - searxng-deployment.yaml
+  - searxng-svc.yaml
+  # Schema (sync-wave 1) - gates everything below it
+  - migrations-job.yaml
+  # Application services (sync-waves 2-3)
+  - backend-deployment.yaml
+  - backend-svc.yaml
+  - zero-cache-statefulset.yaml
+  - zero-cache-svc.yaml
+  - worker-deployment.yaml
+  - beat-deployment.yaml
+  - frontend-deployment.yaml
+  - frontend-svc.yaml
+  # Networking
+  - http-route.yaml
+
+# Upstream ships both images from one release, so these move together. Bump both
+# to the same tag; a mismatched pair fails at the Zero schema version check
+# rather than anywhere obvious.
+images:
+  - name: ghcr.io/modsetter/surfsense-backend
+    newTag: "0.0.39"
+  - name: ghcr.io/modsetter/surfsense-web
+    newTag: "0.0.39"

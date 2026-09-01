@@ -1,0 +1,88 @@
+# Same image as the backend, different SERVICE_ROLE. This is where Docling
+# actually parses uploaded documents, so it is the memory-hungriest pod in the
+# stack; if uploads start failing with OOMKilled, raise the limit here first.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: surfsense-worker
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: surfsense-worker
+  template:
+    metadata:
+      labels:
+        app: surfsense-worker
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/modsetter/surfsense-backend:0.0.39
+          envFrom:
+            - configMapRef:
+                name: surfsense-config
+          env:
+            - name: SERVICE_ROLE
+              value: worker
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_password
+            - name: DATABASE_URL
+              value: postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@surfsense-postgres:5432/surfsense
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: secret_key
+            - name: CELERY_BROKER_URL
+              value: redis://surfsense-redis:6379/0
+            - name: CELERY_RESULT_BACKEND
+              value: redis://surfsense-redis:6379/0
+            - name: REDIS_APP_URL
+              value: redis://surfsense-redis:6379/0
+            # Upstream's default of 10 is sized for a machine that is not also
+            # running Postgres, zero-cache and everything else in this repo.
+            - name: CELERY_MAX_WORKERS
+              value: "4"
+            - name: CELERY_MIN_WORKERS
+              value: "1"
+          volumeMounts:
+            # Both paths are shared with the backend pod - a file uploaded
+            # through the API is written by one and parsed by the other. This is
+            # the reason these two claims have to be ReadWriteMany.
+            - name: object-store
+              mountPath: /app/.local_object_store
+            - name: shared-tmp
+              mountPath: /shared_tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 3Gi
+            limits:
+              memory: 8Gi
+      volumes:
+        - name: object-store
+          persistentVolumeClaim:
+            claimName: surfsense-object-store-pvc
+        - name: shared-tmp
+          persistentVolumeClaim:
+            claimName: surfsense-shared-tmp-pvc

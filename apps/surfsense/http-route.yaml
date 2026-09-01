@@ -1,0 +1,92 @@
+# Replaces upstream's bundled Caddy container (docker/proxy/Caddyfile) with the
+# cluster's existing Envoy gateway. Everything is served from one origin, which
+# is what SurfSense expects: the browser's API and Zero URLs are same-origin
+# relative, so no NEXT_PUBLIC_* URL has to be configured anywhere.
+#
+# Rule order below is documentation, not behaviour. Gateway API ranks matches by
+# specificity (Exact before PathPrefix, then longest prefix first), which
+# reproduces Caddy's matcher-specificity sort exactly - that sort is the only
+# reason /auth/callback reaches the frontend while /auth/* reaches the backend.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: surfsense-http-route
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+    external-dns.alpha.kubernetes.io/hostname: surfsense.hoytlabs.app
+spec:
+  parentRefs:
+    - name: gateway-external
+      namespace: gateway
+  hostnames:
+    - "surfsense.hoytlabs.app"
+  rules:
+    # Zero's auth-context endpoint is FastAPI, despite living under /zero.
+    # Exact, so it outranks the /zero/ prefix below.
+    - matches:
+        - path:
+            type: Exact
+            value: /zero/context
+      backendRefs:
+        - name: surfsense-backend
+          port: 8000
+
+    # The post-login token handler is a Next.js page, despite living under
+    # /auth. Longer prefix than /auth, so it outranks it.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /auth/callback
+      backendRefs:
+        - name: surfsense-frontend
+          port: 3000
+
+    # FastAPI Users' auth and OAuth routers.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /auth
+      backendRefs:
+        - name: surfsense-backend
+          port: 8000
+
+    # FastAPI Users' profile router.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /users
+      backendRefs:
+        - name: surfsense-backend
+          port: 8000
+
+    # REST, SSE chat streaming, connector OAuth callbacks, messaging webhooks.
+    # Caddy set flush_interval -1 here to stop it buffering the stream; Envoy
+    # does not buffer responses by default, so there is no equivalent to set.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/v1
+      backendRefs:
+        - name: surfsense-backend
+          port: 8000
+
+    # WebSocket sync. Zero needs the /zero prefix preserved, not stripped, so
+    # the browser's cacheURL can be ${SURFSENSE_PUBLIC_URL}/zero - hence no
+    # URLRewrite filter here.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /zero
+      backendRefs:
+        - name: surfsense-zero-cache
+          port: 4848
+
+    # Next.js app plus its own /api/zero/*, /api/search, /api/contact routes.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: surfsense-frontend
+          port: 3000

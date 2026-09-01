@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: surfsense-postgres
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    # RWO hostpath volume: a rolling update would deadlock with the new pod
+    # waiting for a volume the old pod still holds.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: surfsense-postgres
+  template:
+    metadata:
+      labels:
+        app: surfsense-postgres
+    spec:
+      securityContext:
+        # pgvector/pgvector:pg17 is Debian-based, where the postgres user is
+        # uid/gid 999 - not the 70 the alpine images in this repo use.
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg17
+          # pgvector, not stock postgres: SurfSense stores document embeddings
+          # in vector columns and the extension has to exist in the image.
+          command:
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
+          ports:
+            - containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_DB
+              value: surfsense
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_password
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+            - name: postgres-config
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgresql.conf
+              readOnly: true
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d surfsense"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d surfsense"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 3Gi
+      volumes:
+        - name: postgres-data
+          persistentVolumeClaim:
+            claimName: surfsense-postgres-pvc
+        - name: postgres-config
+          configMap:
+            name: surfsense-postgres-config

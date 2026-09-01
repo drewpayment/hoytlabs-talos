@@ -1,0 +1,72 @@
+# Two storage tiers on purpose, which is a deliberate break from the
+# static-NFS-PV pattern the other apps in this repo use:
+#
+#   openebs-hostpath (local disk, RWO, node-pinned)
+#     - Postgres. pgvector index maintenance plus zero-cache continuously
+#       draining a logical replication slot is a far heavier IO profile than
+#       mission-control or sprinkler put on their databases, and NFS is the
+#       wrong floor for it.
+#     - zero-cache's replica file, which is SQLite. SQLite over NFS is a
+#       documented corruption risk, not a performance preference.
+#
+#   nfs-csi (dynamic, RWX, on the TrueNAS box)
+#     - The object store and scratch dir, which the backend and the Celery
+#       worker both mount and therefore genuinely need ReadWriteMany.
+#     - Redis, which is only a Celery broker here; its AOF is replayable state,
+#       not a system of record.
+#
+# The two hostpath claims pin their pods to whichever node binds first. For a
+# single-replica homelab stack that is the right trade; the cost is that losing
+# that node means restoring Postgres from backup rather than rescheduling.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: surfsense-postgres-pvc
+  namespace: surfsense
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: openebs-hostpath
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: surfsense-object-store-pvc
+  namespace: surfsense
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-csi
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: surfsense-shared-tmp-pvc
+  namespace: surfsense
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-csi
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: surfsense-redis-pvc
+  namespace: surfsense
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: nfs-csi
+  resources:
+    requests:
+      storage: 5Gi

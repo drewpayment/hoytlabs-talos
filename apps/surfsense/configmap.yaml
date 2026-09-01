@@ -1,0 +1,64 @@
+# Non-secret SurfSense settings. Mirrors docker/.env.example from the upstream
+# repo, minus everything that only makes sense under docker-compose (host port
+# publishing, Caddy/ACME, the docker.sock sandbox runtime).
+#
+# Anything holding a credential lives in externalsecret.yaml instead. Values the
+# upstream compose file derives from other values (DATABASE_URL, the CELERY_*
+# URLs, the ZERO_* connection strings) are assembled inline in each Deployment
+# via $(VAR) expansion, so the password never has to exist in two places.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: surfsense-config
+  namespace: surfsense
+data:
+  SURFSENSE_ENV: "production"
+  DEPLOYMENT_MODE: "self-hosted"
+
+  # Single public origin. Every browser-facing URL is same-origin relative
+  # behind the HTTPRoute, exactly as it is behind upstream's bundled Caddy.
+  SURFSENSE_PUBLIC_URL: "https://surfsense.hoytlabs.app"
+  NEXT_FRONTEND_URL: "https://surfsense.hoytlabs.app"
+  BACKEND_URL: "https://surfsense.hoytlabs.app"
+
+  AUTH_TYPE: "LOCAL"
+  # Flip to FALSE once your own account exists. The app is reachable from the
+  # public internet through the Cloudflare tunnel, so leaving open registration
+  # on means anyone who finds the hostname can create an account.
+  REGISTRATION_ENABLED: "TRUE"
+
+  # Docling parses documents in-cluster: no API key, no document ever leaves
+  # the homelab. It is also the single largest driver of worker pod memory.
+  ETL_SERVICE: "DOCLING"
+
+  # Baked into the backend image at build time (Dockerfile stage 3), so this is
+  # a no-download startup. Changing it to a model that is NOT pre-baked makes
+  # every pod fetch weights from HuggingFace on first boot.
+  EMBEDDING_MODEL: "sentence-transformers/all-MiniLM-L6-v2"
+
+  # The sandbox runtime spawns sibling *Docker* containers through a mounted
+  # /var/run/docker.sock. Talos runs containerd and does not expose a Docker
+  # daemon to workloads, so this feature cannot work here at all - it is off by
+  # necessity, not preference. Re-enable only by pointing SANDBOX_PROVIDER at
+  # Daytona's hosted API or at an opensandbox-server on a separate Docker host.
+  SANDBOX_ENABLED: "FALSE"
+
+  # Cloudflare's free tier hard-caps request bodies at 100 MB, and all external
+  # traffic reaches the gateway through the tunnel. A larger value here only
+  # moves the failure from a clear app-level rejection to an opaque 413 from
+  # Cloudflare. Raise it only alongside an internal-gateway-only route.
+  MAX_FILE_SIZE_MB: "100"
+
+  CELERY_TASK_DEFAULT_QUEUE: "surfsense"
+  SEARXNG_URL: "http://surfsense-searxng:8080"
+  FILE_STORAGE_BACKEND: "local"
+  FILE_STORAGE_LOCAL_PATH: "/app/.local_object_store"
+  PYTHONPATH: "/app"
+
+  # Upstream sets both on the api role: their asyncio loop patch for the
+  # unstructured/docling stack assumes uvloop is not installed underneath it.
+  UVICORN_LOOP: "asyncio"
+  UNSTRUCTURED_HAS_PATCHED_LOOP: "1"
+
+  ZERO_APP_PUBLICATIONS: "zero_publication"
+  ZERO_AUTO_RESET: "true"

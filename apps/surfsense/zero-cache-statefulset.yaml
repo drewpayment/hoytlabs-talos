@@ -1,0 +1,111 @@
+# A StatefulSet rather than a Deployment because this pod owns two pieces of
+# durable identity: a Postgres logical replication slot upstream, and a local
+# SQLite replica file. Two of these running at once fight over both.
+#
+# The replica is rebuilt from the upstream WAL on first boot, which is why
+# upstream allows a 600s start_period; the 300s stop grace period is theirs too,
+# and exists so a shutdown mid-checkpoint does not leave the replica needing a
+# full resync on the next start.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: surfsense-zero-cache
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  serviceName: surfsense-zero-cache
+  replicas: 1
+  selector:
+    matchLabels:
+      app: surfsense-zero-cache
+  template:
+    metadata:
+      labels:
+        app: surfsense-zero-cache
+    spec:
+      terminationGracePeriodSeconds: 300
+      containers:
+        - name: zero-cache
+          image: rocicorp/zero:1.6.0
+          ports:
+            - containerPort: 4848
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_password
+            # All three point at the same database, matching upstream's compose
+            # defaults. sslmode=disable because this is in-cluster traffic to a
+            # Postgres that is not serving TLS.
+            - name: ZERO_UPSTREAM_DB
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@surfsense-postgres:5432/surfsense?sslmode=disable
+            - name: ZERO_CVR_DB
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@surfsense-postgres:5432/surfsense?sslmode=disable
+            - name: ZERO_CHANGE_DB
+              value: postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@surfsense-postgres:5432/surfsense?sslmode=disable
+            - name: ZERO_REPLICA_FILE
+              value: /data/zero.db
+            - name: ZERO_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: zero_admin_password
+            # Created by the backend's Alembic migration 116, which is why the
+            # migrations Job has to complete before this pod starts.
+            - name: ZERO_APP_PUBLICATIONS
+              value: zero_publication
+            - name: ZERO_AUTO_RESET
+              value: "true"
+            - name: ZERO_NUM_SYNC_WORKERS
+              value: "2"
+            - name: ZERO_UPSTREAM_MAX_CONNS
+              value: "20"
+            - name: ZERO_CVR_MAX_CONNS
+              value: "30"
+            # Query and mutation authorization run in the Next.js app, not here.
+            - name: ZERO_QUERY_URL
+              value: http://surfsense-frontend:3000/api/zero/query
+            - name: ZERO_MUTATE_URL
+              value: http://surfsense-frontend:3000/api/zero/mutate
+            - name: ZERO_QUERY_FORWARD_COOKIES
+              value: "true"
+          volumeMounts:
+            - name: zero-data
+              mountPath: /data
+          startupProbe:
+            httpGet:
+              path: /keepalive
+              port: 4848
+            periodSeconds: 15
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /keepalive
+              port: 4848
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: zero-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        # Local disk, not NFS: this volume holds a SQLite database.
+        storageClassName: openebs-hostpath
+        resources:
+          requests:
+            storage: 10Gi
