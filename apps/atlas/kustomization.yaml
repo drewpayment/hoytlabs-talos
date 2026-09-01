@@ -24,6 +24,6 @@ resources:
 # images with the full ${{ github.sha }}.
 images:
   - name: ghcr.io/drewpayment/atlas-web
-    newTag: a1f5b72b61023146ac36285ba4c6077eb8e8aa9d
+    newTag: bb07bdf88578cccccab4fada69ace2591b64c96d
   - name: ghcr.io/drewpayment/atlas-bootstrap
-    newTag: a1f5b72b61023146ac36285ba4c6077eb8e8aa9d
+    newTag: bb07bdf88578cccccab4fada69ace2591b64c96d
