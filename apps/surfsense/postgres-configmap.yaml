@@ -1,0 +1,25 @@
+# Verbatim from docker/postgresql.conf upstream. This is not optional tuning:
+# zero-cache replicates from Postgres over a logical replication slot, so
+# wal_level=logical and the slot/sender headroom below are what make real-time
+# sync possible at all. A stock postgres image with no config file (the pattern
+# every other app in this repo uses) leaves wal_level=replica and zero-cache
+# fails at startup with "logical decoding requires wal_level >= logical".
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: surfsense-postgres-config
+  namespace: surfsense
+data:
+  postgresql.conf: |
+    listen_addresses = '*'
+    max_connections = 200
+    shared_buffers = 256MB
+
+    # Required by zero-cache.
+    wal_level = logical
+    max_replication_slots = 10
+    max_wal_senders = 10
+
+    checkpoint_timeout = 10min
+    max_wal_size = 1GB
+    min_wal_size = 80MB

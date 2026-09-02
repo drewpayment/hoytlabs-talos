@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: surfsense-backend
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  strategy:
+    # The object store and scratch dir are RWX, so a rolling update would work
+    # here - but the image is several GB and a second copy of it resident during
+    # the roll is memory this cluster does not have to spare.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: surfsense-backend
+  template:
+    metadata:
+      labels:
+        app: surfsense-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/modsetter/surfsense-backend:0.0.39
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: surfsense-config
+          env:
+            - name: SERVICE_ROLE
+              value: api
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_password
+            - name: DATABASE_URL
+              value: postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@surfsense-postgres:5432/surfsense
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: secret_key
+            - name: CELERY_BROKER_URL
+              value: redis://surfsense-redis:6379/0
+            - name: CELERY_RESULT_BACKEND
+              value: redis://surfsense-redis:6379/0
+            - name: REDIS_APP_URL
+              value: redis://surfsense-redis:6379/0
+          volumeMounts:
+            - name: object-store
+              mountPath: /app/.local_object_store
+            - name: shared-tmp
+              mountPath: /shared_tmp
+          # The image loads torch, docling and the embedding model at boot.
+          # Upstream's compose healthcheck allows a 200s start_period plus 30
+          # retries; this budget is the same idea, and without it the liveness
+          # probe kills the pod mid-warmup in a loop that looks like a crash.
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            periodSeconds: 15
+            failureThreshold: 40
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 500m
+              memory: 2Gi
+            limits:
+              memory: 6Gi
+      volumes:
+        - name: object-store
+          persistentVolumeClaim:
+            claimName: surfsense-object-store-pvc
+        - name: shared-tmp
+          persistentVolumeClaim:
+            claimName: surfsense-shared-tmp-pvc

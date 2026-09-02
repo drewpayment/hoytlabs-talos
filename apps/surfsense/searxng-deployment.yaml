@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: surfsense-searxng
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: surfsense-searxng
+  template:
+    metadata:
+      labels:
+        app: surfsense-searxng
+    spec:
+      containers:
+        - name: searxng
+          image: searxng/searxng:2026.3.13-3c1f68c59
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEARXNG_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: searxng_secret
+          volumeMounts:
+            # settings.yml only. SearXNG writes other state into /etc/searxng at
+            # startup, so mounting the whole ConfigMap over the directory would
+            # leave it read-only and the container would not start.
+            - name: searxng-config
+              mountPath: /etc/searxng/settings.yml
+              subPath: settings.yml
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: searxng-config
+          configMap:
+            name: surfsense-searxng-config

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: surfsense-redis
+  namespace: surfsense
+spec:
+  selector:
+    app: surfsense-redis
+  ports:
+    - port: 6379
+      targetPort: 6379

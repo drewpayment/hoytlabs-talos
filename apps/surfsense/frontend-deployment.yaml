@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: surfsense-frontend
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: surfsense-frontend
+  template:
+    metadata:
+      labels:
+        app: surfsense-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: ghcr.io/modsetter/surfsense-web:0.0.39
+          ports:
+            - containerPort: 3000
+          # Explicit rather than envFrom the shared ConfigMap: upstream's compose
+          # passes the frontend exactly these five, and the browser-facing URLs
+          # are deliberately left unset so they resolve same-origin through the
+          # HTTPRoute. Injecting the backend's whole environment here would set
+          # NEXT_FRONTEND_URL/BACKEND_URL on a service that reads neither.
+          env:
+            - name: AUTH_TYPE
+              value: "LOCAL"
+            - name: ETL_SERVICE
+              value: "DOCLING"
+            - name: DEPLOYMENT_MODE
+              value: "self-hosted"
+            - name: SURFSENSE_BACKEND_INTERNAL_URL
+              value: http://surfsense-backend:8000
+            - name: MAX_FILE_SIZE_MB
+              value: "100"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          securityContext:
+            # The web image declares `USER nextjs` (uid 1001), so unlike the
+            # backend this one can be held to non-root.
+            runAsNonRoot: true
+            runAsUser: 1001
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi

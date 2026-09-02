@@ -1,0 +1,84 @@
+# The compose stack expresses this as a `migrations` service that every other
+# service gates on with `condition: service_completed_successfully`. Sync waves
+# reproduce that: ArgoCD will not start wave 2 until this Job reports Healthy,
+# which for a batch/v1 Job means Complete. A failed migration therefore halts
+# the sync instead of rolling pods against a drifted schema.
+#
+# Deliberately NOT a PreSync hook, which is what atlas-bootstrap uses. atlas
+# talks to a Postgres that already exists outside its own Application; this
+# Application ships its own database, and a PreSync hook runs before *any*
+# sync-phase resource - including surfsense-postgres - so on a first sync there
+# would be nothing to migrate against.
+#
+# Replace=true because a Job's pod template is immutable: bumping the image tag
+# in kustomization.yaml would otherwise fail the sync on an invalid patch.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: surfsense-migrations
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-options: Replace=true
+spec:
+  backoffLimit: 2
+  # Comfortably above MIGRATION_TIMEOUT so the entrypoint's own timeout fires
+  # first and prints which revision it died on.
+  activeDeadlineSeconds: 1800
+  template:
+    metadata:
+      labels:
+        app: surfsense-migrations
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: ghcr.io/modsetter/surfsense-backend:0.0.39
+          envFrom:
+            - configMapRef:
+                name: surfsense-config
+          env:
+            # SERVICE_ROLE is the entire dispatch mechanism in the image's
+            # entrypoint: 'migrate' runs `alembic upgrade head`, verifies the
+            # zero_publication logical-replication publication matches the
+            # canonical shape, and exits 0.
+            - name: SERVICE_ROLE
+              value: migrate
+            - name: MIGRATION_TIMEOUT
+              value: "900"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: postgres_password
+            # Assembled here rather than stored whole in Doppler so the password
+            # exists in exactly one place. $(VAR) expands against entries earlier
+            # in this same list - it does not see envFrom values.
+            - name: DATABASE_URL
+              value: postgresql+asyncpg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@surfsense-postgres:5432/surfsense
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: secret_key
+          securityContext:
+            # No runAsNonRoot: the upstream backend image declares no USER and
+            # its entrypoint writes into paths owned by root. Asserting a
+            # non-root uid here makes the pod fail to start, so the hardening
+            # that is left is dropping capabilities and privilege escalation.
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1Gi
+            limits:
+              memory: 2Gi
