@@ -99,11 +99,17 @@ spec:
             limits:
               memory: 2Gi
   volumeClaimTemplates:
-    - metadata:
+    # apiVersion/kind/volumeMode are spelled out because the API server
+    # defaults them and ArgoCD's ServerSideDiff otherwise reports the
+    # StatefulSet as permanently OutOfSync (argo-cd #15302).
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
         name: zero-data
       spec:
         accessModes:
           - ReadWriteOnce
+        volumeMode: Filesystem
         # Local disk, not NFS: this volume holds a SQLite database.
         storageClassName: openebs-hostpath
         resources:
