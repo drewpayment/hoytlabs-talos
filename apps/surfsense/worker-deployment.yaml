@@ -67,6 +67,15 @@ spec:
               mountPath: /app/.local_object_store
             - name: shared-tmp
               mountPath: /shared_tmp
+            # The GitHub connector shells out to gitingest, which clones under
+            # $TMPDIR/gitingest and then checks the tree out. Checking out
+            # thousands of small files onto NFS blows gitingest's hardcoded
+            # 60s clone timeout ("No digest for <repo>"); the same clone on
+            # node-local disk takes ~25s. Only this subdirectory moves to
+            # local disk: the rest of /shared_tmp stays on the RWX volume
+            # because the backend hands uploaded files to the worker there.
+            - name: gitingest-scratch
+              mountPath: /shared_tmp/gitingest
           securityContext:
             allowPrivilegeEscalation: false
             seccompProfile:
@@ -86,3 +95,6 @@ spec:
         - name: shared-tmp
           persistentVolumeClaim:
             claimName: surfsense-shared-tmp-pvc
+        - name: gitingest-scratch
+          emptyDir:
+            sizeLimit: 10Gi
