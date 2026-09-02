@@ -31,8 +31,10 @@ spec:
           image: pgvector/pgvector:pg17
           # pgvector, not stock postgres: SurfSense stores document embeddings
           # in vector columns and the extension has to exist in the image.
-          command:
-            - postgres
+          # args, not command: the image's docker-entrypoint.sh must still run
+          # so it initdb's an empty volume and creates the role from
+          # POSTGRES_USER/POSTGRES_PASSWORD. It execs postgres with these args.
+          args:
             - -c
             - config_file=/etc/postgresql/postgresql.conf
           ports:
