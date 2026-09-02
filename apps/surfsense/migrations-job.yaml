@@ -19,7 +19,14 @@ metadata:
   namespace: surfsense
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    argocd.argoproj.io/sync-options: Replace=true
+    # Force is required alongside Replace: a plain replace is a PUT, and the
+    # API server rejects it because the live Job carries a generated
+    # controller-uid selector this manifest does not ("spec.selector:
+    # Required value"). Force deletes and recreates instead, which also
+    # means every synced git revision re-runs migrations. That is intended:
+    # image bumps need them, and the entrypoint is idempotent on a
+    # migrated database.
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
   backoffLimit: 2
   # Comfortably above MIGRATION_TIMEOUT so the entrypoint's own timeout fires
