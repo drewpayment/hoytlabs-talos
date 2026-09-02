@@ -31,6 +31,7 @@ spec:
       backendRefs:
         - name: surfsense-backend
           port: 8000
+          weight: 1
 
     # The post-login token handler is a Next.js page, despite living under
     # /auth. Longer prefix than /auth, so it outranks it.
@@ -41,6 +42,7 @@ spec:
       backendRefs:
         - name: surfsense-frontend
           port: 3000
+          weight: 1
 
     # FastAPI Users' auth and OAuth routers.
     - matches:
@@ -50,6 +52,7 @@ spec:
       backendRefs:
         - name: surfsense-backend
           port: 8000
+          weight: 1
 
     # FastAPI Users' profile router.
     - matches:
@@ -59,6 +62,7 @@ spec:
       backendRefs:
         - name: surfsense-backend
           port: 8000
+          weight: 1
 
     # REST, SSE chat streaming, connector OAuth callbacks, messaging webhooks.
     # Caddy set flush_interval -1 here to stop it buffering the stream; Envoy
@@ -70,6 +74,7 @@ spec:
       backendRefs:
         - name: surfsense-backend
           port: 8000
+          weight: 1
 
     # WebSocket sync. Zero needs the /zero prefix preserved, not stripped, so
     # the browser's cacheURL can be ${SURFSENSE_PUBLIC_URL}/zero - hence no
@@ -81,6 +86,7 @@ spec:
       backendRefs:
         - name: surfsense-zero-cache
           port: 4848
+          weight: 1
 
     # Next.js app plus its own /api/zero/*, /api/search, /api/contact routes.
     - matches:
@@ -90,3 +96,4 @@ spec:
       backendRefs:
         - name: surfsense-frontend
           port: 3000
+          weight: 1
