@@ -25,7 +25,7 @@ data:
   # Flip to FALSE once your own account exists. The app is reachable from the
   # public internet through the Cloudflare tunnel, so leaving open registration
   # on means anyone who finds the hostname can create an account.
-  REGISTRATION_ENABLED: "TRUE"
+  REGISTRATION_ENABLED: "FALSE"
 
   # Docling parses documents in-cluster: no API key, no document ever leaves
   # the homelab. It is also the single largest driver of worker pod memory.
