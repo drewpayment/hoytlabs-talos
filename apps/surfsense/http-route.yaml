@@ -67,10 +67,19 @@ spec:
     # REST, SSE chat streaming, connector OAuth callbacks, messaging webhooks.
     # Caddy set flush_interval -1 here to stop it buffering the stream; Envoy
     # does not buffer responses by default, so there is no equivalent to set.
+    #
+    # Envoy's default 15s route timeout covers the whole response, and a chat
+    # turn that searches the knowledge base and then generates streams for far
+    # longer than that. Without this the UI shows "Interrupted: ..." at
+    # exactly 15.0s on every prompt. Same fix as apps/dozzle for its SSE log
+    # stream. The timeout stays on the frontend and auth rules, which only
+    # serve short requests.
     - matches:
         - path:
             type: PathPrefix
             value: /api/v1
+      timeouts:
+        request: 0s
       backendRefs:
         - name: surfsense-backend
           port: 8000
