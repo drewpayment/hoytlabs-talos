@@ -74,7 +74,7 @@ data:
     root_folder_id = None
     uploaded = 0
 
-    def wait_for_indexing(folder_id: int, timeout: float = 1800.0) -> None:
+    def wait_for_indexing(folder_id: int, timeout: float = 5400.0) -> None:
         """Block until the worker clears the folder's indexing flag.
 
         Each request becomes one worker task, and two tasks mirroring the
