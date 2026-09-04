@@ -1,0 +1,101 @@
+# The script the minknotes sync CronJob runs. Kept in a ConfigMap rather than
+# baked into an image so a change here is a plain git diff.
+#
+# What it does: shallow-clone drewpayment/minknotes onto node-local disk,
+# pick the authored markdown (wiki/ and projects/), and post it in batches
+# to SurfSense's folder-upload endpoint - the same API the desktop app uses
+# for a "watched folder". SurfSense keys each file on folder_name +
+# relative path, skips files whose bytes have not changed, versions the
+# ones that have, and (because the workspace is git-native) commits the
+# extracted markdown to the workspace repository, which then pushes to the
+# connected remote. Re-running is therefore safe and convergent.
+#
+# What it does not do: delete SurfSense documents for files removed from
+# minknotes. The upload endpoint has no prune step.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: surfsense-minknotes-sync
+  namespace: surfsense
+data:
+  sync.py: |
+    import json
+    import os
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    import httpx
+
+    REPO = os.environ["SOURCE_REPO"]                  # owner/name
+    GITHUB_PAT = os.environ["GITHUB_PAT"]
+    TOKEN = os.environ["SURFSENSE_TOKEN"]
+    API = os.environ["SURFSENSE_API"].rstrip("/")
+    WORKSPACE_ID = os.environ["WORKSPACE_ID"]
+    FOLDER_NAME = os.environ["FOLDER_NAME"]
+    INCLUDE = [p for p in os.environ["INCLUDE_DIRS"].split(",") if p]
+    BATCH = int(os.environ.get("BATCH_SIZE", "100"))
+    WORK = Path(os.environ.get("WORKDIR", "/work"))
+
+    if not TOKEN.startswith("ss_pat_"):
+        sys.exit("SURFSENSE_TOKEN is not a SurfSense personal access token (expected ss_pat_ prefix)")
+
+    dest = WORK / "repo"
+    subprocess.run(["rm", "-rf", str(dest)], check=True)
+    # Credentials go in an env-driven header, never in the URL, so they do
+    # not land in the process list or git's own error messages.
+    auth = "Basic " + __import__("base64").b64encode(f"x-access-token:{GITHUB_PAT}".encode()).decode()
+    t0 = time.time()
+    subprocess.run(
+        ["git", "-c", f"http.extraheader=AUTHORIZATION: {auth}", "clone", "--quiet",
+         "--depth=1", "--single-branch", f"https://github.com/{REPO}.git", str(dest)],
+        check=True, capture_output=True, text=True,
+    )
+    print(f"cloned {REPO} in {time.time() - t0:.1f}s", flush=True)
+
+    files: list[Path] = []
+    for inc in INCLUDE:
+        base = dest / inc
+        if not base.is_dir():
+            print(f"warning: {inc}/ not found in repo", flush=True)
+            continue
+        files.extend(p for p in base.rglob("*.md") if p.is_file() and not any(part.startswith(".") for part in p.relative_to(dest).parts))
+    files.sort()
+    print(f"{len(files)} markdown files under {INCLUDE}", flush=True)
+    if not files:
+        sys.exit("nothing to upload")
+
+    client = httpx.Client(timeout=httpx.Timeout(600.0, connect=10.0))
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    # Reuse the same root folder across batches and runs: the first request
+    # creates or finds it by name, later ones pin it by id so a rename in
+    # SurfSense does not fork a second tree.
+    root_folder_id = None
+    uploaded = 0
+    for i in range(0, len(files), BATCH):
+        chunk = files[i:i + BATCH]
+        rel = [str(p.relative_to(dest)) for p in chunk]
+        data = {
+            "folder_name": FOLDER_NAME,
+            "workspace_id": WORKSPACE_ID,
+            "relative_paths": json.dumps(rel),
+            "processing_mode": "basic",
+        }
+        if root_folder_id:
+            data["root_folder_id"] = str(root_folder_id)
+        multipart = [("files", (r, p.read_bytes(), "text/markdown")) for r, p in zip(rel, chunk)]
+        for attempt in range(1, 4):
+            r = client.post(f"{API}/api/v1/documents/folder-upload", data=data, files=multipart, headers=headers)
+            if r.status_code < 500:
+                break
+            print(f"batch {i // BATCH + 1}: HTTP {r.status_code}, retry {attempt}", flush=True)
+            time.sleep(10 * attempt)
+        if r.status_code != 200:
+            sys.exit(f"batch {i // BATCH + 1} failed: HTTP {r.status_code} {r.text[:300]}")
+        body = r.json()
+        root_folder_id = root_folder_id or body.get("root_folder_id")
+        uploaded += len(chunk)
+        print(f"batch {i // BATCH + 1}: {len(chunk)} files accepted ({uploaded}/{len(files)})", flush=True)
+
+    print("done: all batches accepted; SurfSense indexes them asynchronously", flush=True)

@@ -30,6 +30,9 @@ resources:
   - frontend-svc.yaml
   # Networking
   - http-route.yaml
+  # Content sync (sync-wave 4)
+  - minknotes-sync-configmap.yaml
+  - minknotes-sync-cronjob.yaml
 
 # Upstream ships both images from one release, so these move together. Bump both
 # to the same tag; a mismatched pair fails at the Zero schema version check
