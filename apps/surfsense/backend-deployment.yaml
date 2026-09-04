@@ -49,6 +49,21 @@ spec:
                 secretKeyRef:
                   name: surfsense-secret
                   key: secret_key
+            - name: GITHUB_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: github_app_id
+            - name: GITHUB_APP_SLUG
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: github_app_slug
+            - name: GITHUB_APP_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: surfsense-secret
+                  key: github_app_private_key
             - name: CELERY_BROKER_URL
               value: redis://surfsense-redis:6379/0
             - name: CELERY_RESULT_BACKEND
