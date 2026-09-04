@@ -53,6 +53,19 @@ data:
   SEARXNG_URL: "http://surfsense-searxng:8080"
   FILE_STORAGE_BACKEND: "local"
   FILE_STORAGE_LOCAL_PATH: "/app/.local_object_store"
+
+  # Git-native knowledge base. Each workspace's documents become a dulwich git
+  # repository under <FILE_STORAGE_LOCAL_PATH>/knowledge_store (the RWX NFS
+  # claim, which is required: backend and worker must see the same history)
+  # and Postgres holds only the derived chunk index. This is the global
+  # master switch; a workspace is git-native only when BOTH this is TRUE and
+  # its workspaces.knowledge_store_enabled row flag is set. Workspaces
+  # created after this flip are born flipped. Pre-existing ones are flipped
+  # with `python scripts/migrate_knowledge_store.py --yes --flip` in a backend
+  # pod, which first seeds the repo from Postgres and checks byte parity.
+  # Setting this back to FALSE reverts every workspace to the Postgres write
+  # path immediately, without touching the repositories.
+  KNOWLEDGE_STORE_ENABLED: "TRUE"
   PYTHONPATH: "/app"
 
   # Upstream sets both on the api role: their asyncio loop patch for the
