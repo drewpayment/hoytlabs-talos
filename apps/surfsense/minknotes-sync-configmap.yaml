@@ -73,6 +73,25 @@ data:
     # SurfSense does not fork a second tree.
     root_folder_id = None
     uploaded = 0
+
+    def wait_for_indexing(folder_id: int, timeout: float = 1800.0) -> None:
+        """Block until the worker clears the folder's indexing flag.
+
+        Each request becomes one worker task, and two tasks mirroring the
+        same tree at once would race to create the same subfolders. The
+        worker sets folder_metadata.indexing_in_progress on the root while
+        it runs, so poll that before sending the next batch.
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            time.sleep(15)
+            r = client.get(f"{API}/api/v1/folders/{folder_id}", headers=headers)
+            if r.status_code != 200:
+                print(f"folder poll: HTTP {r.status_code}", flush=True)
+                continue
+            if not (r.json().get("metadata") or {}).get("indexing_in_progress"):
+                return
+        sys.exit("timed out waiting for the previous batch to finish indexing")
     for i in range(0, len(files), BATCH):
         chunk = files[i:i + BATCH]
         rel = [str(p.relative_to(dest)) for p in chunk]
@@ -97,5 +116,7 @@ data:
         root_folder_id = root_folder_id or body.get("root_folder_id")
         uploaded += len(chunk)
         print(f"batch {i // BATCH + 1}: {len(chunk)} files accepted ({uploaded}/{len(files)})", flush=True)
+        if uploaded < len(files):
+            wait_for_indexing(root_folder_id)
 
     print("done: all batches accepted; SurfSense indexes them asynchronously", flush=True)

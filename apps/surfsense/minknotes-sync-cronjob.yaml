@@ -49,11 +49,11 @@ spec:
                 # and its 100 MB body cap, and never leaves the cluster.
                 - name: SURFSENSE_API
                   value: http://surfsense-backend:8000
-                # One request for the whole tree: each request becomes its own
-                # worker task, and parallel tasks would race to create the same
-                # subfolders. ~1.8k markdown files is ~9 MB, fine in-cluster.
+                # Starlette caps a multipart request at 1000 files. The script
+                # waits for each batch to finish indexing before sending the
+                # next, so batches never race on subfolder creation.
                 - name: BATCH_SIZE
-                  value: "5000"
+                  value: "500"
                 - name: WORKDIR
                   value: /work
                 - name: GITHUB_PAT
