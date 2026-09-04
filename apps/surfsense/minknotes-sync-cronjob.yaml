@@ -1,0 +1,95 @@
+# Mirrors drewpayment/minknotes into the git-native "Mink Notes" workspace.
+#
+# Why this exists: the GitHub connector's repository indexing is deprecated
+# in 0.0.39 (the index button returns "deprecated" without dispatching), and
+# the git-remote feature is push-only, so nothing in the app pulls a repo in.
+# The folder-upload API is the one supported bulk path, and this job drives
+# it. See minknotes-sync-configmap.yaml for what the script does.
+#
+# Runs on the backend image because it already has git and httpx; a
+# separate image would just be those two things again.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: surfsense-minknotes-sync
+  namespace: surfsense
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  schedule: "17 */6 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app: surfsense-minknotes-sync
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: sync
+              image: ghcr.io/modsetter/surfsense-backend:0.0.39
+              command: ["python", "/sync/sync.py"]
+              env:
+                - name: SOURCE_REPO
+                  value: drewpayment/minknotes
+                # Only the authored notes. .doctor-quarantine, .identity-rollback,
+                # scheduler logs and the sqlite state files are not knowledge.
+                - name: INCLUDE_DIRS
+                  value: wiki,projects
+                - name: FOLDER_NAME
+                  value: minknotes
+                - name: WORKSPACE_ID
+                  value: "1"
+                # In-cluster service, not the public hostname: skips Cloudflare
+                # and its 100 MB body cap, and never leaves the cluster.
+                - name: SURFSENSE_API
+                  value: http://surfsense-backend:8000
+                # One request for the whole tree: each request becomes its own
+                # worker task, and parallel tasks would race to create the same
+                # subfolders. ~1.8k markdown files is ~9 MB, fine in-cluster.
+                - name: BATCH_SIZE
+                  value: "5000"
+                - name: WORKDIR
+                  value: /work
+                - name: GITHUB_PAT
+                  valueFrom:
+                    secretKeyRef:
+                      name: surfsense-secret
+                      key: minknotes_github_pat
+                - name: SURFSENSE_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: surfsense-secret
+                      key: surfsense_api_token
+              volumeMounts:
+                - name: sync-script
+                  mountPath: /sync
+                  readOnly: true
+                # Node-local scratch for the clone: checking out thousands of
+                # small files onto NFS is what made gitingest time out.
+                - name: work
+                  mountPath: /work
+              securityContext:
+                allowPrivilegeEscalation: false
+                seccompProfile:
+                  type: RuntimeDefault
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 1Gi
+          volumes:
+            - name: sync-script
+              configMap:
+                name: surfsense-minknotes-sync
+            - name: work
+              emptyDir:
+                sizeLimit: 2Gi
