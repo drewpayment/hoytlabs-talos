@@ -23,7 +23,11 @@ spec:
   jobTemplate:
     spec:
       backoffLimit: 1
-      activeDeadlineSeconds: 1800
+      # The script waits for each 500-file batch to finish indexing before
+      # sending the next, and embedding 500 notes on CPU takes ~15 minutes,
+      # so a full first import is close to an hour. 30 minutes killed the
+      # first real run after two batches (DeadlineExceeded).
+      activeDeadlineSeconds: 14400
       template:
         metadata:
           labels:
