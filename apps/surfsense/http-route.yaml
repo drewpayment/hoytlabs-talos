@@ -48,7 +48,7 @@ spec:
     # cannot do that: in 0.0.39 it is a master auth kill switch that blocks
     # /auth/jwt/login as well (see configmap.yaml). The register endpoint is
     # sent to surfsense-deny, a Service with no selector and therefore no
-    # endpoints, so Envoy answers 503 "no healthy upstream" and the request
+    # endpoints, so Envoy answers 500 (no healthy upstream) and the request
     # never reaches FastAPI. Exact, so it outranks the /auth prefix below.
     # Envoy Gateway v1.0.0 predates SecurityPolicy authorization rules, which
     # would be the cleaner way to express this.

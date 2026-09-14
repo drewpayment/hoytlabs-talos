@@ -115,7 +115,7 @@ Caddy's ACME half was redundant too.
   forgot-password endpoint only prints the reset token to the backend pod's
   stdout; nothing emails it). Public signup is closed at the gateway instead:
   `http-route.yaml` routes `POST /auth/register` to `surfsense-deny`, a
-  selector-less Service, so Envoy returns 503 before FastAPI sees it. To create
+  selector-less Service, so Envoy returns 500 before FastAPI sees it. To create
   another account, temporarily drop that rule or run the register call from
   inside the cluster against `surfsense-backend:8000`.
 - **The backend runs as root.** The upstream image declares no `USER` and its
