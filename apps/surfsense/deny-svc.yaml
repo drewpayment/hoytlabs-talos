@@ -1,6 +1,6 @@
 # Intentionally has no selector, so it never gets endpoints. The HTTPRoute
 # sends POST /auth/register here to close public signup at the gateway; Envoy
-# answers 503 "no healthy upstream" and FastAPI never sees the request. See the
+# answers 500 (no healthy upstream) and FastAPI never sees the request. See the
 # REGISTRATION_ENABLED comment in configmap.yaml for why the app's own flag
 # cannot be used for this.
 apiVersion: v1
