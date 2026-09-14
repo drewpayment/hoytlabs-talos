@@ -108,8 +108,16 @@ Caddy's ACME half was redundant too.
   that node means restoring from backup, not rescheduling. There is no backup
   CronJob in here yet — add a `pg_dump` to NFS before you put anything you care
   about in it.
-- **`REGISTRATION_ENABLED` is `TRUE`.** The app is reachable from the public
-  internet. Flip it to `FALSE` in `configmap.yaml` once your account exists.
+- **Leave `REGISTRATION_ENABLED` at `TRUE`.** Despite its name, in 0.0.39 it
+  is a master auth kill switch: `FALSE` blocks `/auth/jwt/login` too, so once
+  the browser's 14-day refresh token expires every account is locked out with
+  `403 Registration is disabled` and there is no in-app recovery (the
+  forgot-password endpoint only prints the reset token to the backend pod's
+  stdout; nothing emails it). Public signup is closed at the gateway instead:
+  `http-route.yaml` routes `POST /auth/register` to `surfsense-deny`, a
+  selector-less Service, so Envoy returns 503 before FastAPI sees it. To create
+  another account, temporarily drop that rule or run the register call from
+  inside the cluster against `surfsense-backend:8000`.
 - **The backend runs as root.** The upstream image declares no `USER` and its
   entrypoint writes to root-owned paths, so `runAsNonRoot` cannot be set on it.
   Capabilities are dropped and privilege escalation is off; that is the ceiling

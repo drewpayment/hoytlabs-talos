@@ -30,6 +30,7 @@ resources:
   - frontend-svc.yaml
   # Networking
   - http-route.yaml
+  - deny-svc.yaml
   # Content sync (sync-wave 4)
   - minknotes-sync-configmap.yaml
   - minknotes-sync-cronjob.yaml

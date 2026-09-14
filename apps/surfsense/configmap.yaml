@@ -22,10 +22,14 @@ data:
   BACKEND_URL: "https://surfsense.hoytlabs.app"
 
   AUTH_TYPE: "LOCAL"
-  # Flip to FALSE once your own account exists. The app is reachable from the
-  # public internet through the Cloudflare tunnel, so leaving open registration
-  # on means anyone who finds the hostname can create an account.
-  REGISTRATION_ENABLED: "FALSE"
+  # Do NOT set this to FALSE to close signup. Despite the name, in 0.0.39 the
+  # backend's registration_allowed() dependency is a master auth kill switch:
+  # FALSE also blocks POST /auth/jwt/login, so every session that reaches the
+  # end of its 14-day refresh window is locked out with "403 Registration is
+  # disabled" and there is no in-app way back in (2026-09-13 incident). Public
+  # signup is closed at the gateway instead: http-route.yaml sends
+  # POST /auth/register to a Service with no endpoints.
+  REGISTRATION_ENABLED: "TRUE"
 
   # Docling parses documents in-cluster: no API key, no document ever leaves
   # the homelab. It is also the single largest driver of worker pod memory.
