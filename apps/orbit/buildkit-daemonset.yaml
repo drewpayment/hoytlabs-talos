@@ -12,14 +12,42 @@ spec:
         app: buildkit
     spec:
       serviceAccountName: orbit
+      # Share one PID namespace across the pod so a buildkitd left behind by a
+      # previous container instance is still visible (and killable) from the
+      # next one. Without this, a leaked daemon holds buildkitd.lock and the
+      # :1234 listener forever and every restart dies with "could not lock
+      # /var/lib/buildkit/buildkitd.lock, another instance running?" until the
+      # pod itself is recreated (seen on kube-master-msi-1, 11k+ restarts).
+      shareProcessNamespace: true
       containers:
         - name: buildkit
           image: moby/buildkit:v0.17.3
+          command: ["sh", "-c"]
           args:
-            - --addr
-            - tcp://0.0.0.0:1234
+            - |
+              # Reap any buildkitd that outlived its container (see
+              # shareProcessNamespace above), then start fresh.
+              if pkill -x buildkitd; then
+                echo "buildkit: killed a stale buildkitd from a previous container"
+                sleep 2
+                pkill -9 -x buildkitd || true
+              fi
+              exec buildkitd --addr tcp://0.0.0.0:1234
           ports:
             - containerPort: 1234
+          # Only route build-service traffic to a daemon that is actually
+          # listening, and restart one that stops answering.
+          readinessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
           securityContext:
             privileged: true
           volumeMounts:
