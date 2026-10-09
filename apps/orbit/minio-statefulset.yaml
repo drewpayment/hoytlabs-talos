@@ -18,7 +18,13 @@ spec:
         runAsUser: 0
       containers:
         - name: minio
-          image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+          # MinIO deleted its Docker Hub and public quay.io images in Sept 2026,
+          # so minio/minio:* is no longer pullable. Chainguard builds MinIO from
+          # source and publishes it free as `latest` only; we pin the index
+          # digest so the rollout is reproducible. Bump the digest deliberately
+          # (docker buildx imagetools inspect cgr.dev/chainguard/minio:latest).
+          # Entrypoint is /usr/bin/minio, so the original args apply unchanged.
+          image: cgr.dev/chainguard/minio:latest@sha256:25bc63a89475bc494bfbce9bbeddb0421aece3f3968d77c809db5104d07b4545
           args: ["server", "/data", "--console-address", ":9001"]
           ports:
             - name: api
