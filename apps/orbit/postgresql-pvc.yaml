@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-data
+spec:
+  # Local node storage, same class surfsense-postgres runs on. Postgres can't
+  # live on the NFS share (locking), and the previous emptyDir lost the whole
+  # data directory every time the pod was recreated - twice, most recently
+  # when the Orbit teardown deleted the namespace on 2026-10-09. A local PV
+  # pins the pod to one node but survives pod deletion and node reboots.
+  accessModes: [ReadWriteOnce]
+  storageClassName: openebs-hostpath
+  resources:
+    requests:
+      storage: 10Gi

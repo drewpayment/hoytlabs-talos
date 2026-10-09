@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The Orbit proof-of-concept itself was torn down on 2026-10-09. This
+# directory now holds ONLY the shared lab Postgres that used to live inside
+# it, because atlas's DATABASE_URL (Doppler: ATLAS_DATABASE_URL) points at
+# postgresql.orbit.svc.cluster.local and the bootstrap Job authenticates
+# with ORBIT_POSTGRES_USER / ORBIT_POSTGRES_PASSWORD. Keeping the namespace,
+# Service name and secret keys means no Doppler change is needed.
+#
+# Follow-up: move this to apps/atlas (or a dedicated apps/postgres) and
+# update ATLAS_DATABASE_URL in Doppler, then delete this directory.
+
+namespace: orbit
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - externalsecret.yaml
+  - postgresql-pvc.yaml
+  - postgresql-statefulset.yaml
+  - postgresql-service.yaml
