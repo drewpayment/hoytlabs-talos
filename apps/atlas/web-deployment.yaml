@@ -21,6 +21,9 @@ spec:
         # alone leaves running pods on the old values. Bump this whenever a
         # mail-related value changes so ArgoCD's sync actually rolls the pod.
         hoytlabs.app/mail-config-rev: "resend-support-hoytlabs-app-3"
+        # Bump to force a sync (and therefore the PreSync bootstrap Job) after
+        # the shared Postgres is rebuilt - the hook has no diff of its own.
+        hoytlabs.app/db-rev: "postgres-rebuilt-2026-10-09"
     spec:
       serviceAccountName: atlas
       containers:
