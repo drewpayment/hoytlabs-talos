@@ -1,3 +1,11 @@
+# DEPRECATED for new claims. Use nfs-csi-isolated below.
+#
+# nfs-csi sets a constant `subDir: kubernetes-pvcs`, so every PVC of this class
+# is mounted at the same NAS directory, /mnt/tank/appdata/kubernetes-pvcs. Data
+# from unrelated workloads (surfsense object store, scratch, Redis, leftover
+# redpanda data) is intermingled there, and no quota is enforced. Kept only so
+# the existing surfsense claims keep working until they are migrated. See
+# docs/plans/2026-10-10-nfs-csi-isolation.md. Do not use it for new claims.
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -9,3 +17,26 @@ parameters:
   subDir: kubernetes-pvcs
 reclaimPolicy: Retain
 volumeBindingMode: Immediate
+---
+# Per-claim directories: each PVC is provisioned at
+# /mnt/tank/appdata/<namespace>/<pvc-name> (no PV-name suffix; the volume handle
+# and mount source for atlas-nfs-isolated confirm this). Same pattern as
+# apps/atlas/db-backup-storageclass.yaml.
+#
+# onDelete: retain keeps the NAS directory when the PVC is deleted.
+# reclaimPolicy: Retain keeps the PV after deletion too.
+# Note: the NFS driver does not enforce capacity, so the requested size is
+# nominal and allowVolumeExpansion has no practical effect on this backend.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-csi-isolated
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.86.44
+  share: /mnt/tank/appdata
+  subDir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
+  onDelete: retain
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
