@@ -11,7 +11,12 @@
 # here. (A superuser secret would be needed only if the role or database were
 # ever lost and had to be recreated by the app.)
 #
-# Image: PostgreSQL 17.11. Atlas was verified against PostgreSQL 15 (the shared
+# Image: PostgreSQL 17.11 on Debian 13 (trixie), tag 17.11-standard-trixie. The
+# bare 17.11 tag is Debian 11 (bullseye, EOL Aug 2026, ICU 67). Trixie ships
+# ICU 76. Pinning the distro suffix keeps the glibc/ICU collation version fixed,
+# so a base-image bump cannot change collation versions and force a REINDEX of
+# every text index.
+# Atlas was verified against PostgreSQL 15 (the shared
 # orbit server, full 443-test suite). PG 17 has not been run against Atlas yet;
 # the migrations are plain SQL, and the only version-sensitive one (0005's
 # STORED tsvector column + GIN index) is supported on 17.
@@ -41,7 +46,7 @@ metadata:
     argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   instances: 2
-  imageName: ghcr.io/cloudnative-pg/postgresql:17.11
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie
 
   # Spread instances across nodes; "required" means a second instance stays
   # Pending rather than co-locating with the primary on the same node.

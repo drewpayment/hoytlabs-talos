@@ -18,7 +18,7 @@
 
 ## What changes
 
-- `cnpg-cluster.yaml` (new): `Cluster/atlas-db`, 2 instances, PostgreSQL 17.11,
+- `cnpg-cluster.yaml` (new): `Cluster/atlas-db`, 2 instances, PostgreSQL 17.11 (`17.11-standard-trixie`, Debian 13),
   5Gi on `openebs-hostpath-retain`, initdb database and owner `atlas` with ICU
   en-US locale, no superuser access, `Prune=false,Delete=false`. Sync wave 0.
 - `db-storageclass.yaml` (new): `openebs-hostpath-retain`, cluster-scoped. It is
@@ -64,12 +64,19 @@ expected.
 
 ```sh
 kubectl -n atlas get cluster atlas-db
-kubectl cnpg status atlas-db                                    # if the plugin is installed
 kubectl -n atlas get pods -l cnpg.io/cluster=atlas-db -o wide   # 2 pods, different nodes
 kubectl -n atlas get job atlas-bootstrap
 kubectl -n atlas logs job/atlas-bootstrap -c bootstrap
-kubectl -n atlas get pvc -o wide                                # reclaim policy via the SC
+kubectl get pv | grep atlas                                     # RECLAIM POLICY must be Retain
 curl -fsS https://atlas.hoytlabs.app/api/health
+```
+
+The `kubectl-cnpg` plugin is NOT installed locally. Where a plugin command is
+shown, use the plain-kubectl fallback in Operations instead, or install the
+plugin first. Plugin form, for reference (always with `-n atlas`):
+
+```sh
+kubectl cnpg -n atlas status atlas-db
 ```
 
 ## Rollback
@@ -94,17 +101,28 @@ curl -fsS https://atlas.hoytlabs.app/api/health
   Then run `argocd app sync atlas`. Auto-sync does not retry a failed revision
   after `retry.limit` (2), so a human has to trigger it or push a commit.
 - Node gone for good: if an instance stays Pending because its PV is pinned to a
-  node that is gone, remove that instance so CNPG rebuilds it elsewhere:
-  `kubectl cnpg destroy atlas-db <n>`, or delete that instance's PVC and pod.
-  Check that the primary is healthy first, and do not do this to the primary
-  without a failover.
+  node that is gone, CNPG has to rebuild that instance elsewhere. Plain kubectl
+  fallback (the plugin is not installed), for a replica only:
+  1. `kubectl -n atlas get pods -l cnpg.io/cluster=atlas-db -o wide` and confirm
+     which instance is the primary (`cnpg.io/instanceRole=primary`). Do not
+     delete the primary this way.
+  2. `kubectl -n atlas delete pvc atlas-db-<n>`. Deleting the PVC of a Pending
+     replica releases its node-pinned volume.
+  3. `kubectl -n atlas delete pod atlas-db-<n>`. CNPG recreates the instance and
+     its PVC, and schedules it on a node that has room.
+  With the plugin (`kubectl cnpg -n atlas destroy atlas-db <n>`) the same thing
+  is one command.
 
 ## Appendix: if data ever needs migrating
 
 Use only if the database later holds data worth keeping. Order matters:
 
-1. Disable auto-sync on the `atlas` Application in ArgoCD. Otherwise selfHeal
-   reverts the next step.
+1. Pause the sync at the ApplicationSet level, not on the Application. The
+   `applications` ApplicationSet (`apps/appset.yaml`) generates the `atlas`
+   Application with `automated` in its template, so disabling auto-sync on the
+   Application is overwritten on the next reconcile. Temporarily remove the
+   `automated` block from the template in `apps/appset.yaml`, or otherwise
+   exclude `atlas`, and restore it in step 6.
 2. Scale the web deployment to 0: `kubectl -n atlas scale deploy/atlas-web --replicas=0`.
 3. Dump from the source: `pg_dump --format=custom --no-owner --no-privileges`.
 4. Merge and sync so the Cluster and the bootstrap Job create the role and
@@ -112,15 +130,17 @@ Use only if the database later holds data worth keeping. Order matters:
 5. Restore with pg_restore 17 or later:
    `pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction --exit-on-error -d "$URI" dump.file`,
    where `$URI` is `atlas-db-app`'s `uri`.
-6. Re-enable auto-sync. The web deployment rolls back to 1 replica.
+6. Restore the `automated` block in `apps/appset.yaml`. The web deployment
+   rolls back to 1 replica.
 
 ## Follow-ups
 
-- Land the backup CronJob right after cutover: `db-backup-cronjob.yaml` must read
-  `atlas-db-app`'s `uri` instead of `atlas-secret/DATABASE_URL`, and use a PG 17
-  client image. Until then it keeps reading `atlas-secret/DATABASE_URL`, which
-  still holds the orbit URL, so it dumps the stale orbit database and does not
-  fail. Nothing in the nightly dumps reflects the new cluster until this lands.
+- Land the backup CronJob right after cutover. It lives on the unpushed local
+  branch `atlas/db-backup` (commits 1dde639 and a05f44f) and will be pushed as a
+  PR after #38 merges. It already targets `atlas-db-app`'s `uri` with a PG 17
+  image. Until it lands, it keeps reading `atlas-secret/DATABASE_URL`, which
+  still holds the orbit URL. Nothing in the nightly dumps reflects the new
+  cluster until that PR lands.
 - Soak period, then a cleanup PR. It removes the `DATABASE_URL` and
   `ATLAS_DB_ADMIN_*` ExternalSecret mappings, then deletes `ATLAS_DATABASE_URL`
   from Doppler and retires `apps/orbit`.
