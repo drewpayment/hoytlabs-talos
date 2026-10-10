@@ -30,8 +30,8 @@
   from `atlas-db-app/uri`. The `ATLAS_DB_ADMIN_*` refs are optional and resolve
   empty, so `db:ensure` skips.
 - `externalsecret.yaml`: `DATABASE_URL`, `ATLAS_DB_ADMIN_USER` and
-  `ATLAS_DB_ADMIN_PASSWORD` are still synced but unused. They are kept so a revert
-  works (see Rollback). They are removed in a follow-up.
+  `ATLAS_DB_ADMIN_PASSWORD` were kept as unused mappings so a revert would work.
+  Removed in the cleanup PR (see Follow-ups).
 - `kustomization.yaml`: adds `db-storageclass.yaml` and `cnpg-cluster.yaml` under
   Core.
 
@@ -81,18 +81,21 @@ kubectl cnpg -n atlas status atlas-db
 
 ## Rollback
 
-- Revert this PR. The orbit Postgres still runs and Doppler `ATLAS_DATABASE_URL`
-  still points at it. Because the `DATABASE_URL` and `ATLAS_DB_ADMIN_*` mappings
-  are kept in the ExternalSecret, the reverted pre-CNPG bootstrap Job still finds
-  `atlas-secret/DATABASE_URL`.
+- **Superseded by the cleanup PR.** Before it, reverting this PR was a rollback:
+  the orbit Postgres still ran and the kept `DATABASE_URL` mapping still pointed at
+  it. The cleanup PR removes `apps/orbit` (the orbit Postgres and its PVC, which
+  is `Delete` reclaim, are gone) and removes the `DATABASE_URL` and
+  `ATLAS_DB_ADMIN_*` mappings. A plain revert of #38 is no longer a rollback.
+  The only rollback now is to restore the NAS dump into a fresh `Cluster`
+  (see the restore template in `db-restore-job.example.yaml`).
 - The `atlas-db` Cluster is NOT pruned (`Prune=false`), so ArgoCD leaves it
   running after a revert. Delete it by hand only when sure its data is not needed:
   `kubectl -n atlas delete cluster atlas-db`. Its PVCs use the Retain
   StorageClass, so the data on disk is kept.
 - If the revert sync wedges, run `kubectl apply -f apps/atlas/externalsecret.yaml`
   from the reverted tree, then sync again.
-- After the follow-up PR removes the Doppler mappings, a plain revert is no
-  longer a valid rollback. Restore the mappings first.
+- After the cleanup PR, a plain revert is not a rollback. Rollback is "restore
+  from the NAS dump into a fresh `Cluster`".
 
 ## Operations
 
@@ -135,13 +138,12 @@ Use only if the database later holds data worth keeping. Order matters:
 
 ## Follow-ups
 
-- Land the backup CronJob right after cutover. It lives on the unpushed local
-  branch `atlas/db-backup` (commits 1dde639 and a05f44f) and will be pushed as a
-  PR after #38 merges. It already targets `atlas-db-app`'s `uri` with a PG 17
-  image. Until it lands, it keeps reading `atlas-secret/DATABASE_URL`, which
-  still holds the orbit URL. Nothing in the nightly dumps reflects the new
-  cluster until that PR lands.
-- Soak period, then a cleanup PR. It removes the `DATABASE_URL` and
-  `ATLAS_DB_ADMIN_*` ExternalSecret mappings, then deletes `ATLAS_DATABASE_URL`
-  from Doppler and retires `apps/orbit`.
+- DONE: backup CronJob landed on main (`db-backup-cronjob.yaml`). It reads
+  `atlas-db-app`'s `uri`, not `atlas-secret/DATABASE_URL`.
+- DONE (cleanup PR, soak skipped by decision on 2026-10-09): removed the
+  `DATABASE_URL` and `ATLAS_DB_ADMIN_*` ExternalSecret mappings, and retired
+  `apps/orbit`. The operator still has to delete Doppler `ATLAS_DATABASE_URL`
+  (and `ORBIT_POSTGRES_*` if unused) by hand. The orbit data (a re-seeded admin
+  user only) was removed with the namespace; the PVC was `Delete` reclaim, and
+  that is intended.
 - Consider CNPG scheduled backups (barman object store) in place of `pg_dump`.
