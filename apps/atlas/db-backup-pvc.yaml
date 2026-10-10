@@ -1,11 +1,15 @@
 # Backup target for the nightly pg_dump (see db-backup-cronjob.yaml).
 #
-# NFS (nfs-csi) is fine here because the backup job only writes whole dump
-# files sequentially and never keeps a database open on the share. It is NOT
-# fine for the live Postgres data directory: Postgres depends on fsync
-# semantics, POSIX locks and small random writes that NFS does not provide
-# reliably, which is why the atlas database itself stays on local block
-# storage. RWX is used only so the CronJob can be rescheduled to any node.
+# NFS is fine here because the backup job only writes whole dump files
+# sequentially and never keeps a database open on the share. It is NOT fine for
+# the live Postgres data directory: Postgres depends on fsync semantics, POSIX
+# locks and small random writes that NFS does not provide reliably, which is why
+# the atlas database itself stays on local block storage. RWX is used only so
+# the CronJob can be rescheduled to any node.
+#
+# Uses the dedicated atlas-nfs-isolated StorageClass, not the shared nfs-csi
+# class, so this claim gets its own directory on the NAS (see
+# db-backup-storageclass.yaml).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -14,7 +18,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: nfs-csi
+  storageClassName: atlas-nfs-isolated
   resources:
     requests:
       storage: 20Gi

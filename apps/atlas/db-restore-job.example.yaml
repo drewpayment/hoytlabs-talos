@@ -1,0 +1,83 @@
+# RESTORE TEMPLATE. Applied by hand, NOT listed in kustomization.yaml.
+#
+# Restores one dump from the atlas-db-backups PVC into the atlas database.
+# Destructive: --clean drops and recreates the objects in the target database.
+#
+# Procedure:
+# Target: the CNPG Cluster atlas-db (PR #38); do not apply before it exists.
+#
+#   1. Stop writes. Scale the web app to 0 so nothing writes during the restore:
+#        kubectl -n atlas scale deploy/atlas-web --replicas=0
+#   2. Copy this file, set RESTORE_FILE to a dump name (the job lists /backups
+#      first), then apply the copy:
+#        kubectl -n atlas apply -f <your-edited-copy>.yaml
+#   3. Watch the output:
+#        kubectl -n atlas logs -f job/atlas-db-restore
+#   4. Remove the job:
+#        kubectl -n atlas delete job atlas-db-restore
+#   5. Scale the web app back up:
+#        kubectl -n atlas scale deploy/atlas-web --replicas=1
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: atlas-db-restore
+  namespace: atlas
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: atlas
+      containers:
+        - name: pg-restore
+          # Same image as the backup job. Its major version MUST match the
+          # server (the CNPG Cluster atlas-db, PG 17). See db-backup-cronjob.yaml.
+          image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-db-app
+                  key: uri
+                  optional: false
+            # EDIT ME: the file name inside /backups, e.g. atlas-20261008T073000Z.dump
+            - name: RESTORE_FILE
+              value: "CHANGE-ME.dump"
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+              readOnly: true
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              host=$(echo "$DATABASE_URL" | sed -E 's#^[a-zA-Z0-9+.-]+://([^@/]*@)?([^:/?]+).*#\2#')
+              case "$host" in
+                atlas-db-rw|atlas-db-rw.*) ;;
+                *) echo "ERROR: host \"$host\" is not atlas-db-rw; refusing to restore" >&2; exit 1 ;;
+              esac
+              ls -l /backups
+              test -f "/backups/${RESTORE_FILE}"
+              pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction --exit-on-error -d "$DATABASE_URL" "/backups/${RESTORE_FILE}"
+              echo "restore complete: ${RESTORE_FILE}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: atlas-db-backups
