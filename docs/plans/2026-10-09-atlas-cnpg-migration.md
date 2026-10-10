@@ -4,85 +4,124 @@
 
 - Atlas used a shared single-instance Postgres in the `orbit` namespace
   (`postgresql.orbit.svc.cluster.local`), with `DATABASE_URL` in Doppler synced
-  into `atlas-secret`. That server lost its data directory twice, the second
-  time with Atlas's role and database gone with it.
-- It now runs on a node-local `openebs-hostpath` PVC. That survives pod
-  deletion but not node or disk loss, and it has no failover.
-- Goal: an Atlas-owned CNPG `Cluster` (`atlas-db`) with 2 instances on
-  `openebs-hostpath`, spread across nodes by required pod anti-affinity, so a
-  node loss fails over at the Postgres layer. No Longhorn.
-- The CloudNativePG operator (1.30.0) is already installed. `surfsense-postgres`
-  has run on `openebs-hostpath` for weeks, so the Talos kubelet mount problem
-  that broke the July 2026 attempt (`git show 6a6a7ca`, `0ac41f9`) is gone.
+  into `atlas-secret`. That server lost its data directory twice; the second
+  time Atlas's role and database were lost with it.
+- It now runs on a node-local `openebs-hostpath` PVC. That survives pod deletion
+  but not node or disk loss, and there is no failover.
+- Goal: an Atlas-owned CNPG `Cluster` (`atlas-db`) with 2 instances on node-local
+  storage, spread across nodes by required pod anti-affinity, so a node loss
+  fails over at the Postgres layer. No Longhorn.
+- The CNPG operator (1.30.0) is installed. `openebs-hostpath` PVCs work on this
+  cluster: orbit's postgresql-data and surfsense run on it on msi-1 and dell-1,
+  and the repo has no Talos config change for it. The July failure
+  (`git show 6a6a7ca`, `0ac41f9`) was on an older setup.
 
 ## What changes
 
 - `cnpg-cluster.yaml` (new): `Cluster/atlas-db`, 2 instances, PostgreSQL 17.11,
-  5Gi on `openebs-hostpath`, `bootstrap.initdb` with database and owner `atlas`,
-  `enableSuperuserAccess: true`. Sync wave 0.
-- CNPG generates `atlas-db-app` (key `uri` is the web app's `DATABASE_URL`) and
-  `atlas-db-superuser` (used only by the bootstrap Job).
-- `web-deployment.yaml`: `DATABASE_URL` comes from `atlas-db-app/uri`. Sync wave 2.
-- `bootstrap-job.yaml`: no longer a PreSync hook. It is a `Sync` hook at wave 1,
-  with an initContainer that waits for `atlas-db-rw` to accept connections.
-  `DATABASE_URL` and the `ATLAS_DB_ADMIN_*` credentials come from the CNPG Secrets.
+  5Gi on `openebs-hostpath-retain`, initdb database and owner `atlas` with ICU
+  en-US locale, no superuser access, `Prune=false,Delete=false`. Sync wave 0.
+- `db-storageclass.yaml` (new): `openebs-hostpath-retain`, cluster-scoped. It is
+  `openebs-hostpath` with `reclaimPolicy: Retain`.
+- CNPG generates `atlas-db-app` (key `uri` is the web app's `DATABASE_URL`).
+- `web-deployment.yaml`: `DATABASE_URL` from `atlas-db-app/uri`. Sync wave 2.
+- `bootstrap-job.yaml`: a `Sync` hook at wave 1 (was PreSync). An initContainer
+  waits for `atlas-db-rw:5432` to accept TCP connections. It reads `DATABASE_URL`
+  from `atlas-db-app/uri`. The `ATLAS_DB_ADMIN_*` refs are optional and resolve
+  empty, so `db:ensure` skips.
 - `externalsecret.yaml`: `DATABASE_URL`, `ATLAS_DB_ADMIN_USER` and
-  `ATLAS_DB_ADMIN_PASSWORD` are removed from Doppler sync.
-- `kustomization.yaml`: adds `cnpg-cluster.yaml` under Core.
+  `ATLAS_DB_ADMIN_PASSWORD` are still synced but unused. They are kept so a revert
+  works (see Rollback). They are removed in a follow-up.
+- `kustomization.yaml`: adds `db-storageclass.yaml` and `cnpg-cluster.yaml` under
+  Core.
 
-Sync order: wave 0 (Cluster) → wave 1 (bootstrap Job: db:ensure, migrate, seed)
-→ wave 2 (web Deployment).
+Sync order: wave 0 (Cluster) → wave 1 (bootstrap Job: wait for DB, then
+`db:ensure` (skips), migrate, seed) → wave 2 (web Deployment).
+
+ArgoCD v2.14.7 has no built-in health check for `postgresql.cnpg.io` Cluster, so
+the Cluster is Healthy as soon as it exists. The initContainer's TCP wait is
+what actually orders the Job after the database is up.
+
+## Data decision
+
+No data migration. The orbit `atlas` database holds 1 user and 0 diagrams after
+the loss and re-seed, and the seed re-creates the admin. The new cluster starts
+empty and the bootstrap seed creates the admin. The appendix covers the case
+where data must be moved later.
 
 ## Cutover
 
 1. Merge the PR to `main`.
-2. ArgoCD creates the `Cluster`. Wait until `atlas-db` reports healthy (see
-   verification).
-3. The wave-1 bootstrap Job waits for `atlas-db-rw`, then runs `db:ensure`
-   (creates nothing that already exists), migrations and the seed.
-4. The wave-2 web Deployment rolls out against `atlas-db-rw`.
+2. ArgoCD creates the StorageClass and the Cluster. The bootstrap Job waits for
+   `atlas-db-rw`, runs migrate and seed, and the web Deployment rolls out.
+3. If a sync fails, see Operations.
 
-If the sync fails with `Job "atlas-bootstrap" is invalid: ... field is
-immutable`, the live Job is still the old PreSync-hook Job. Delete it once with
-`kubectl -n atlas delete job atlas-bootstrap` and let ArgoCD resync.
+The live `atlas-bootstrap` Job is a hook with `BeforeHookCreation`, so ArgoCD
+deletes it by name before creating the new hook. No immutable-field error is
+expected.
 
 ## Verification
 
 ```sh
 kubectl -n atlas get cluster atlas-db
-kubectl cnpg status atlas-db        # if the cnpg plugin is installed
+kubectl cnpg status atlas-db                                    # if the plugin is installed
 kubectl -n atlas get pods -l cnpg.io/cluster=atlas-db -o wide   # 2 pods, different nodes
 kubectl -n atlas get job atlas-bootstrap
 kubectl -n atlas logs job/atlas-bootstrap -c bootstrap
+kubectl -n atlas get pvc -o wide                                # reclaim policy via the SC
 curl -fsS https://atlas.hoytlabs.app/api/health
 ```
 
-## Data migration
-
-The database is currently empty after today's loss. If it holds data at
-cutover, restore it into the new cluster. The `atlas-db` Cluster does not exist
-until this PR syncs, so the restore runs after wave 0 and before the web
-Deployment (wave 2) rolls out. The simplest way is to pause the web Deployment
-(`kubectl -n atlas scale deploy/atlas-web --replicas=0`) until the restore is
-done:
-
-1. Take a `pg_dump --format=custom` from orbit's Postgres, or use the latest
-   nightly dump from the NAS volume written by `db-backup-cronjob.yaml`.
-2. Once `atlas-db` is healthy and the bootstrap Job has created the `atlas`
-   role and database, run `pg_restore --no-owner --no-privileges` against
-   `atlas-db-rw` as the `atlas` role (use the `uri` from `atlas-db-app`).
-
 ## Rollback
 
-Revert the PR. The orbit Postgres still exists, and Doppler `ATLAS_DATABASE_URL`
-still points at it, so reverting restores the previous wiring. Delete the
-`atlas-db` Cluster only once the rollback is confirmed, since its PVCs hold the
-new data.
+- Revert this PR. The orbit Postgres still runs and Doppler `ATLAS_DATABASE_URL`
+  still points at it. Because the `DATABASE_URL` and `ATLAS_DB_ADMIN_*` mappings
+  are kept in the ExternalSecret, the reverted pre-CNPG bootstrap Job still finds
+  `atlas-secret/DATABASE_URL`.
+- The `atlas-db` Cluster is NOT pruned (`Prune=false`), so ArgoCD leaves it
+  running after a revert. Delete it by hand only when sure its data is not needed:
+  `kubectl -n atlas delete cluster atlas-db`. Its PVCs use the Retain
+  StorageClass, so the data on disk is kept.
+- If the revert sync wedges, run `kubectl apply -f apps/atlas/externalsecret.yaml`
+  from the reverted tree, then sync again.
+- After the follow-up PR removes the Doppler mappings, a plain revert is no
+  longer a valid rollback. Restore the mappings first.
+
+## Operations
+
+- If a sync fails, check `kubectl -n atlas get cluster atlas-db` and the Job logs
+  (`kubectl -n atlas logs job/atlas-bootstrap -c wait-for-db` and `-c bootstrap`).
+  Then run `argocd app sync atlas`. Auto-sync does not retry a failed revision
+  after `retry.limit` (2), so a human has to trigger it or push a commit.
+- Node gone for good: if an instance stays Pending because its PV is pinned to a
+  node that is gone, remove that instance so CNPG rebuilds it elsewhere:
+  `kubectl cnpg destroy atlas-db <n>`, or delete that instance's PVC and pod.
+  Check that the primary is healthy first, and do not do this to the primary
+  without a failover.
+
+## Appendix: if data ever needs migrating
+
+Use only if the database later holds data worth keeping. Order matters:
+
+1. Disable auto-sync on the `atlas` Application in ArgoCD. Otherwise selfHeal
+   reverts the next step.
+2. Scale the web deployment to 0: `kubectl -n atlas scale deploy/atlas-web --replicas=0`.
+3. Dump from the source: `pg_dump --format=custom --no-owner --no-privileges`.
+4. Merge and sync so the Cluster and the bootstrap Job create the role and
+   database.
+5. Restore with pg_restore 17 or later:
+   `pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction --exit-on-error -d "$URI" dump.file`,
+   where `$URI` is `atlas-db-app`'s `uri`.
+6. Re-enable auto-sync. The web deployment rolls back to 1 replica.
 
 ## Follow-ups
 
-- Point `db-backup-cronjob.yaml` at `atlas-db-app`'s `uri` instead of
-  `atlas-secret/DATABASE_URL`. It breaks once this change lands (see PR).
-- Delete `apps/orbit` after the cutover is verified.
-- Delete `ATLAS_DATABASE_URL` from Doppler after the cutover.
+- Land the backup CronJob right after cutover: `db-backup-cronjob.yaml` must read
+  `atlas-db-app`'s `uri` instead of `atlas-secret/DATABASE_URL`, and use a PG 17
+  client image. Until then it keeps reading `atlas-secret/DATABASE_URL`, which
+  still holds the orbit URL, so it dumps the stale orbit database and does not
+  fail. Nothing in the nightly dumps reflects the new cluster until this lands.
+- Soak period, then a cleanup PR. It removes the `DATABASE_URL` and
+  `ATLAS_DB_ADMIN_*` ExternalSecret mappings, then deletes `ATLAS_DATABASE_URL`
+  from Doppler and retires `apps/orbit`.
 - Consider CNPG scheduled backups (barman object store) in place of `pg_dump`.
