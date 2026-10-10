@@ -1,10 +1,11 @@
 # Nightly logical backup of the atlas Postgres database.
 #
 # Target: the CloudNativePG Cluster atlas-db (PR #38), reached through the
-# atlas-db-rw Service. Its connection URI comes from the CNPG-generated Secret
-# atlas-db-app. DO NOT apply this file before that Cluster exists: the Secret
-# is required (optional: false) and the Job will fail loudly without it.
-# A host guard refuses to run unless the URI points at atlas-db-rw.
+# atlas-db-rw Service. Its connection parts come from the CNPG-generated Secret atlas-db-app
+# (component keys host, port, user, password, dbname), read as PG* env vars.
+# DO NOT apply this file before that Cluster exists: the Secret is required
+# (optional: false) and the Job fails loudly without it. pg_* take no connection
+# argument; libpq reads PG*. A host guard refuses to run unless PGHOST is atlas-db-rw.
 #
 # Why this exists: atlas's database was lost twice because the Postgres server
 # ran on an emptyDir, and there has never been a backup. The server now has a
@@ -57,9 +58,14 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: atlas
-          # No pod-level fsGroup. csi-driver-nfs has fsGroupPolicy: File, so
-          # fsGroup makes the kubelet recursively chgrp the whole NFS tree on
-          # every run. The claim's directory is writable without it.
+          # csi-driver-nfs creates each claim's directory as root:root 0755, so
+          # uid 70 cannot write to it without help. fsGroup 70 gives the group
+          # ownership. fsGroupChangePolicy OnRootMismatch makes the kubelet chgrp
+          # only the volume root, and only when it does not already match, not
+          # the whole tree on every run. The directory belongs to this claim alone.
+          securityContext:
+            fsGroup: 70
+            fsGroupChangePolicy: OnRootMismatch
           containers:
             - name: pg-dump
               # postgres:*-alpine runs the postgres user as uid/gid 70 (verified for 17).
@@ -70,13 +76,41 @@ spec:
               # same change as the server.
               image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
               env:
-                - name: DATABASE_URL
+                # CNPG Secret atlas-db-app component keys. libpq reads PG*.
+                - name: PGHOST
                   valueFrom:
                     secretKeyRef:
                       name: atlas-db-app
-                      key: uri
+                      key: host
+                      optional: false
+                - name: PGPORT
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: port
+                      optional: false
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: user
+                      optional: false
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: password
+                      optional: false
+                - name: PGDATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: dbname
                       optional: false
                 # Optional: unset or empty disables the dead-man's switch.
+                # NOT YET MAPPED in externalsecret.yaml. Add ATLAS_BACKUP_HEALTHCHECK_URL
+                # to Doppler first, then map it in externalsecret.yaml. Mapping it before
+                # the Doppler key exists breaks the whole atlas-secret sync.
                 - name: HEALTHCHECK_URL
                   valueFrom:
                     secretKeyRef:
@@ -121,16 +155,15 @@ spec:
 
                   # Host guard. If the secret is ever repointed, this must refuse
                   # rather than quietly back up the wrong database.
-                  host=$(echo "$DATABASE_URL" | sed -E 's#^[a-zA-Z0-9+.-]+://([^@/]*@)?([^:/?]+).*#\2#')
-                  case "$host" in
-                    atlas-db-rw|atlas-db-rw.*) ;;
-                    *) echo "ERROR: DATABASE_URL host \"$host\" is not atlas-db-rw; refusing to dump" >&2; exit 1 ;;
-                  esac
+                  if [ "$PGHOST" != atlas-db-rw ]; then
+                    echo "ERROR: PGHOST is \"$PGHOST\", not atlas-db-rw; refusing to dump" >&2
+                    exit 1
+                  fi
 
                   # Wait for the database (it may still be starting), for up to
                   # about 10 minutes. Then fail instead of hanging to the deadline.
                   tries=0
-                  until pg_isready -d "$DATABASE_URL" -t 5 >/dev/null 2>&1; do
+                  until pg_isready -t 5 >/dev/null 2>&1; do
                     tries=$((tries + 1))
                     if [ "$tries" -ge 60 ]; then
                       echo "ERROR: database not reachable after 10 minutes" >&2
@@ -139,10 +172,18 @@ spec:
                     sleep 10
                   done
 
+                  # Server identity. CNPG forces cluster_name to the Cluster name, so
+                  # this proves the host we reached really is the atlas-db Cluster.
+                  cluster_name=$(psql -At -c "show cluster_name")
+                  if [ "$cluster_name" != atlas-db ]; then
+                    echo "ERROR: server cluster_name is \"$cluster_name\", not atlas-db; refusing to dump" >&2
+                    exit 1
+                  fi
+
                   # A pg_dump whose major version differs from the server's can
                   # produce a dump the server cannot restore cleanly. Refuse to run.
                   dump_major=$(pg_dump --version | awk '{print $3}' | cut -d. -f1)
-                  server_version=$(psql -At -d "$DATABASE_URL" -c "show server_version")
+                  server_version=$(psql -At -c "show server_version")
                   server_major=$(echo "$server_version" | cut -d. -f1)
                   if [ "$dump_major" != "$server_major" ]; then
                     echo "ERROR: pg_dump is major ${dump_major} but the server is major ${server_major}; bump the image tag" >&2
@@ -159,7 +200,7 @@ spec:
                   # Run in the background and `wait`, so the TERM/INT trap can
                   # fire while pg_dump is running.
                   pg_dump --format=custom --no-owner --no-privileges \
-                    --lock-wait-timeout=120s --file "$tmp" "$DATABASE_URL" &
+                    --lock-wait-timeout=120s --file "$tmp" &
                   wait "$!"
 
                   # Validate. test -s catches an empty file. pg_restore -f /dev/null
