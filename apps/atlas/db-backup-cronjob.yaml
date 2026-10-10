@@ -1,0 +1,275 @@
+# Nightly logical backup of the atlas Postgres database.
+#
+# Target: the CloudNativePG Cluster atlas-db (PR #38), reached through the
+# atlas-db-rw Service. Its connection parts come from the CNPG-generated Secret atlas-db-app
+# (component keys host, port, user, password, dbname), read as PG* env vars.
+# DO NOT apply this file before that Cluster exists: the Secret is required
+# (optional: false) and the Job fails loudly without it. pg_* take no connection
+# argument; libpq reads PG*. A host guard refuses to run unless PGHOST is atlas-db-rw.
+#
+# Why this exists: atlas's database was lost twice because the Postgres server
+# ran on an emptyDir, and there has never been a backup. The server now has a
+# persistent PVC, but a PVC is not a backup (it dies with a bad delete or a bad
+# migration). This job writes a custom-format pg_dump to the NAS every night,
+# so the dumps live off-cluster on TrueNAS, not on the cluster's own storage.
+#
+# Retention: dumps named atlas-<UTC timestamp>.dump. The newest 14 are always
+# kept; older ones are pruned once they are more than 30 days old, judged by the
+# timestamp in the file name (not mtime).
+#
+# Each dump is checked with `pg_restore -f /dev/null` (reads every block, not
+# just the TOC) before it is moved into place, so a truncated dump never looks
+# like a good backup.
+#
+# Restore: see db-restore-job.example.yaml (applied by hand; scales atlas-web
+# to 0 first).
+#
+# Dead-man's switch: add ATLAS_BACKUP_HEALTHCHECK_URL in Doppler (a
+# healthchecks.io ping URL) to enable it. The ExternalSecret must also map that
+# key into atlas-secret (externalsecret.yaml). Without it nothing watches for
+# failed Jobs: three purge-trash Jobs failed unnoticed before this was added.
+#
+# Manual run (same as the nightly job, outside the schedule):
+#   kubectl -n atlas create job --from=cronjob/atlas-db-backup atlas-db-backup-manual
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: atlas-db-backup
+  namespace: atlas
+spec:
+  # 03:30 New York time. (02:30 falls in the spring-forward DST gap and would
+  # be skipped on that night.) This runs after the 03:00 purge-trash job, so the
+  # dump reflects the post-purge state.
+  schedule: "30 3 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      # No retries. A retry after the size-sanity exit (exit 2) would dump
+      # again, compare against the small dump just saved, and pass silently.
+      # A failed run stays visible as a Failed Job and pod (logs kept) until a
+      # human looks. The server wait loop covers transient DB startup.
+      backoffLimit: 0
+      activeDeadlineSeconds: 1800
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: atlas
+          # csi-driver-nfs creates each claim's directory as root:root 0755, so
+          # uid 70 cannot write to it without help. fsGroup 70 gives the group
+          # ownership. fsGroupChangePolicy OnRootMismatch makes the kubelet chgrp
+          # only the volume root, and only when it does not already match, not
+          # the whole tree on every run. The directory belongs to this claim alone.
+          securityContext:
+            fsGroup: 70
+            fsGroupChangePolicy: OnRootMismatch
+          containers:
+            - name: pg-dump
+              # postgres:*-alpine runs the postgres user as uid/gid 70 (verified for 17).
+              # pg_dump must match the server's major version (the CNPG Cluster
+              # atlas-db runs Postgres 17). To bump: pick a new tag, resolve its
+              # digest with `docker buildx imagetools inspect <image:tag>
+              # --format '{{.Manifest.Digest}}'`, and change the major in the
+              # same change as the server.
+              image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+              env:
+                # CNPG Secret atlas-db-app component keys. libpq reads PG*.
+                - name: PGHOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: host
+                      optional: false
+                - name: PGPORT
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: port
+                      optional: false
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: user
+                      optional: false
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: password
+                      optional: false
+                - name: PGDATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-db-app
+                      key: dbname
+                      optional: false
+                # Optional: unset or empty disables the dead-man's switch.
+                # NOT YET MAPPED in externalsecret.yaml. Add ATLAS_BACKUP_HEALTHCHECK_URL
+                # to Doppler first, then map it in externalsecret.yaml. Mapping it before
+                # the Doppler key exists breaks the whole atlas-secret sync.
+                - name: HEALTHCHECK_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-secret
+                      key: ATLAS_BACKUP_HEALTHCHECK_URL
+                      optional: true
+                - name: PGCONNECT_TIMEOUT
+                  value: "15"
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  # Dumps hold the whole database, including auth data, so
+                  # create them 0600.
+                  umask 077
+
+                  dir=/backups
+                  keep=14          # newest N dumps are always kept, regardless of age
+                  retain_days=30   # older dumps beyond the newest N are pruned after this
+                  tmp=""           # set while the temp dump exists; cleared after the mv
+
+                  # Dead-man's switch. Success pings the URL; any failure pings
+                  # URL/fail (healthchecks.io convention). Runs from the EXIT trap,
+                  # so it sees the real exit status in $?.
+                  ping() {
+                    [ -n "${HEALTHCHECK_URL:-}" ] || return 0
+                    wget -q -O- -T 10 "${HEALTHCHECK_URL}${1:-}" >/dev/null || true
+                  }
+                  on_exit() {
+                    rc=$?
+                    if [ -n "$tmp" ]; then rm -f "$tmp"; fi
+                    if [ "$rc" -eq 0 ]; then ping; else ping /fail; fi
+                    exit "$rc"
+                  }
+                  trap on_exit EXIT
+                  # Turn TERM/INT into a normal exit so the EXIT handler runs.
+                  trap 'exit 143' TERM INT
+
+                  # Host guard. If the secret is ever repointed, this must refuse
+                  # rather than quietly back up the wrong database.
+                  if [ "$PGHOST" != atlas-db-rw ]; then
+                    echo "ERROR: PGHOST is \"$PGHOST\", not atlas-db-rw; refusing to dump" >&2
+                    exit 1
+                  fi
+
+                  # Wait for the database (it may still be starting), for up to
+                  # about 10 minutes. Then fail instead of hanging to the deadline.
+                  tries=0
+                  until pg_isready -t 5 >/dev/null 2>&1; do
+                    tries=$((tries + 1))
+                    if [ "$tries" -ge 60 ]; then
+                      echo "ERROR: database not reachable after 10 minutes" >&2
+                      exit 1
+                    fi
+                    sleep 10
+                  done
+
+                  # Server identity. CNPG forces cluster_name to the Cluster name, so
+                  # this proves the host we reached really is the atlas-db Cluster.
+                  cluster_name=$(psql -At -c "show cluster_name")
+                  if [ "$cluster_name" != atlas-db ]; then
+                    echo "ERROR: server cluster_name is \"$cluster_name\", not atlas-db; refusing to dump" >&2
+                    exit 1
+                  fi
+
+                  # A pg_dump whose major version differs from the server's can
+                  # produce a dump the server cannot restore cleanly. Refuse to run.
+                  dump_major=$(pg_dump --version | awk '{print $3}' | cut -d. -f1)
+                  server_version=$(psql -At -c "show server_version")
+                  server_major=$(echo "$server_version" | cut -d. -f1)
+                  if [ "$dump_major" != "$server_major" ]; then
+                    echo "ERROR: pg_dump is major ${dump_major} but the server is major ${server_major}; bump the image tag" >&2
+                    exit 1
+                  fi
+
+                  ts=$(date -u +%Y%m%dT%H%M%SZ)
+                  name="atlas-${ts}.dump"
+                  final="${dir}/${name}"
+                  # Dot-prefixed, so neither the glob nor the retention pass
+                  # ever sees it as a finished dump.
+                  tmp="${dir}/.${name}.tmp"
+
+                  # Run in the background and `wait`, so the TERM/INT trap can
+                  # fire while pg_dump is running.
+                  pg_dump --format=custom --no-owner --no-privileges \
+                    --lock-wait-timeout=120s --file "$tmp" &
+                  wait "$!"
+
+                  # Validate. test -s catches an empty file. pg_restore -f /dev/null
+                  # reads every block of the archive (--list reads only the TOC).
+                  test -s "$tmp"
+                  pg_restore -f /dev/null "$tmp"
+
+                  # Newest existing dump, for the size sanity check below. The
+                  # names sort chronologically.
+                  prev=$(ls -1 "${dir}"/atlas-[0-9]*.dump 2>/dev/null | sort | tail -n 1)
+
+                  mv "$tmp" "$final"
+                  tmp=""   # the dump is kept; the EXIT handler must not touch it
+
+                  # Size sanity. A database that was wiped and reseeded still dumps
+                  # without error, just much smaller. That is the signature to
+                  # catch. The dump is kept, but the Job exits 2 so it shows Failed
+                  # and a human looks at it.
+                  status=0
+                  new_size=$(stat -c %s "$final")
+                  if [ -n "$prev" ]; then
+                    prev_size=$(stat -c %s "$prev")
+                    if [ $((new_size * 2)) -lt "$prev_size" ]; then
+                      echo "WARNING: $(basename "$final") is ${new_size} bytes, under half of the previous $(basename "$prev") at ${prev_size} bytes. Dump kept; check whether the database was wiped." >&2
+                      status=2
+                    fi
+                  fi
+
+                  # Retention, by the timestamp in the FILE NAME (mtime can be
+                  # reset by copies or restores). The newest $keep are always
+                  # kept. Of the rest, only dumps older than $retain_days are removed.
+                  cutoff=$(date -u -d "@$(( $(date -u +%s) - retain_days * 86400 ))" +%Y%m%d)
+                  i=0
+                  ls -1 "${dir}"/atlas-[0-9]*.dump 2>/dev/null | sort -r | while read -r f; do
+                    i=$((i + 1))
+                    if [ "$i" -le "$keep" ]; then continue; fi
+                    day=$(basename "$f" | cut -c7-14)
+                    if [ "$day" -lt "$cutoff" ]; then
+                      rm -f "$f"
+                      echo "pruned $(basename "$f")"
+                    fi
+                  done
+                  # Abandoned temp files from killed runs (older than a day).
+                  find "$dir" -maxdepth 1 -name '.atlas-*.dump.tmp' -mtime +1 -delete
+
+                  count=$(ls -1 "${dir}"/atlas-[0-9]*.dump 2>/dev/null | wc -l | tr -d ' ')
+                  if [ "$count" -lt 1 ]; then
+                    echo "ERROR: no dumps retained after pruning" >&2
+                    exit 1
+                  fi
+
+                  echo "backup complete: ${name} size=$(du -h "$final" | cut -f1) retained=${count}"
+                  exit "$status"
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 70
+                runAsGroup: 70
+                allowPrivilegeEscalation: false
+                seccompProfile:
+                  type: RuntimeDefault
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: atlas-db-backups

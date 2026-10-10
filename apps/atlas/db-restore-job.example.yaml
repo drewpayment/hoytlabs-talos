@@ -1,0 +1,128 @@
+# RESTORE TEMPLATE. Applied by hand, NOT listed in kustomization.yaml.
+#
+# Restores one dump from the atlas-db-backups PVC into the atlas-db CNPG Cluster
+# (PR #38). Do not apply before that Cluster exists. Destructive: --clean drops
+# and recreates the objects in the archive.
+#
+# CAVEAT: --clean only drops objects that are present in the archive. If the
+# dump is from before a later schema migration, restoring over the current
+# database leaves the newer tables in place while drizzle.__drizzle_migrations
+# is rolled back to the dump's state, so the schema no longer matches the
+# migration history. For a restore across a migration, first empty the database
+# as role atlas (as the atlas app owner), then restore into the empty database:
+#   DROP SCHEMA drizzle CASCADE;
+#   -- and drop the public tables, e.g. DROP SCHEMA public CASCADE; CREATE SCHEMA public;
+#
+# Procedure:
+#   1. Stop writes. Scale the web app to 0 so nothing writes during the restore:
+#        kubectl -n atlas scale deploy/atlas-web --replicas=0
+#   2. Copy this file, set RESTORE_FILE to a dump name (the job lists /backups
+#      first), then apply the copy:
+#        kubectl -n atlas apply -f <your-edited-copy>.yaml
+#   3. Watch the output:
+#        kubectl -n atlas logs -f job/atlas-db-restore
+#   4. Remove the job:
+#        kubectl -n atlas delete job atlas-db-restore
+#   5. Scale the web app back up:
+#        kubectl -n atlas scale deploy/atlas-web --replicas=1
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: atlas-db-restore
+  namespace: atlas
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: atlas
+      # Same fsGroup reasoning as db-backup-cronjob.yaml: the per-claim NFS
+      # directory is root:root 0755, so uid 70 needs group ownership to read it
+      # and OnRootMismatch limits the chgrp to the volume root.
+      securityContext:
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: pg-restore
+          # Same image as the backup job. Its major version MUST match the
+          # server (the CNPG Cluster atlas-db, PG 17). See db-backup-cronjob.yaml.
+          image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+          env:
+            # CNPG Secret atlas-db-app component keys. libpq reads PG*.
+            - name: PGHOST
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-db-app
+                  key: host
+                  optional: false
+            - name: PGPORT
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-db-app
+                  key: port
+                  optional: false
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-db-app
+                  key: user
+                  optional: false
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-db-app
+                  key: password
+                  optional: false
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-db-app
+                  key: dbname
+                  optional: false
+            # EDIT ME: the file name inside /backups, e.g. atlas-20261008T073000Z.dump
+            - name: RESTORE_FILE
+              value: "CHANGE-ME.dump"
+          volumeMounts:
+            - name: backups
+              mountPath: /backups
+              readOnly: true
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              # Host guard: refuse to restore anywhere but the atlas-db Service.
+              if [ "$PGHOST" != atlas-db-rw ]; then
+                echo "ERROR: PGHOST is \"$PGHOST\", not atlas-db-rw; refusing to restore" >&2
+                exit 1
+              fi
+              # Server identity: CNPG sets cluster_name to the Cluster name.
+              cluster_name=$(psql -At -c "show cluster_name")
+              if [ "$cluster_name" != atlas-db ]; then
+                echo "ERROR: server cluster_name is \"$cluster_name\", not atlas-db; refusing to restore" >&2
+                exit 1
+              fi
+              ls -l /backups
+              test -f "/backups/${RESTORE_FILE}"
+              pg_restore --clean --if-exists --no-owner --no-privileges --single-transaction --exit-on-error -d "$PGDATABASE" "/backups/${RESTORE_FILE}"
+              echo "restore complete: ${RESTORE_FILE}"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 70
+            runAsGroup: 70
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: backups
+          persistentVolumeClaim:
+            claimName: atlas-db-backups

@@ -1,0 +1,28 @@
+# Dedicated StorageClass for the database dumps (see db-backup-pvc.yaml).
+#
+# Why not nfs-csi: its parameters set a constant `subDir: kubernetes-pvcs`, so
+# every PVC of that class is provisioned into the SAME directory on the share,
+# which is also used by surfsense, redis and redpanda data (world-writable,
+# ~48k files). A backup volume must not share a directory with other apps.
+#
+# This class templates the subDir per claim, so each backup PVC gets its own
+# directory: /mnt/tank/appdata/atlas/atlas-db-backups. csi-driver-nfs v4.x
+# supports ${pvc.metadata.namespace} / ${pvc.metadata.name} in subDir.
+#
+# Cluster-scoped: no namespace. onDelete: retain keeps the directory (and the
+# dumps) on the NAS even if the PVC is deleted.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: atlas-nfs-isolated
+provisioner: nfs.csi.k8s.io
+parameters:
+  server: 192.168.86.44
+  share: /mnt/tank/appdata
+  subDir: "${pvc.metadata.namespace}/${pvc.metadata.name}"
+  onDelete: retain
+mountOptions:
+  - nolock
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+allowVolumeExpansion: true
