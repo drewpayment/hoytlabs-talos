@@ -162,11 +162,12 @@ spec:
                     echo "$*" >> "$log"
                   }
 
-                  # JSON string literal from stdin: escapes backslash, quote,
-                  # tab and newline.
+                  # JSON string literal from stdin. Strips CR and turns control and
+                  # non-ASCII bytes into "?", so the escaping always yields valid JSON.
                   jstr() {
                     printf '"'
-                    sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r//g' \
+                    tr -d '\r' | tr -c '\11\12\40-\176' '?' \
+                      | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' \
                       | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g' | tr -d '\n'
                     printf '"'
                   }
@@ -182,7 +183,7 @@ spec:
                       echo "Last 20 lines of the job output:"
                       tail -n 20 "$log"
                       echo
-                      echo "The full output is in the logs of the failed Job's pod (kubectl -n atlas get pods)."
+                      echo "The full job log is in the pod log: kubectl -n atlas logs job/<failed Job name>."
                     } > "$body"
                     {
                       printf '{"from":'
@@ -212,7 +213,7 @@ spec:
                   on_exit() {
                     rc=$?
                     if [ -n "$tmp" ]; then rm -f "$tmp"; fi
-                    if [ "$rc" -eq 0 ]; then ping; else ping /fail; alert_failure "$rc" || true; fi
+                    if [ "$rc" -eq 0 ]; then ping; else ping /fail; { echo "--- job log ---"; cat "$log"; } >&2 || true; alert_failure "$rc" || true; fi
                     exit "$rc"
                   }
                   trap on_exit EXIT
@@ -309,8 +310,10 @@ spec:
                       say "pruned $(basename "$f")"
                     fi
                   done
-                  # Abandoned temp files from killed runs (older than a day).
-                  find "$dir" -maxdepth 1 -name '.atlas-*.dump.tmp' -mtime +1 -delete
+                  # Abandoned temp files from killed runs. The Job's deadline is 30
+                  # minutes and runs are Forbid, so anything over an hour old is
+                  # abandoned. The mv above has already moved this run's own temp file.
+                  find "$dir" -maxdepth 1 -name '.atlas-*.dump.tmp' -mmin +60 -delete
 
                   count=$(ls -1 "${dir}"/atlas-[0-9]*.dump 2>/dev/null | wc -l | tr -d ' ')
                   if [ "$count" -lt 1 ]; then

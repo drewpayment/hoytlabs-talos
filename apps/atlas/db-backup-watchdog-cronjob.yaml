@@ -8,6 +8,8 @@
 #   - the newest dump is older than MAX_AGE_HOURS,
 #   - the newest dump is smaller than MIN_BYTES (a wiped, reseeded database),
 #   - a .atlas-*.dump.tmp left by a killed backup run is more than a day old.
+#     (The backup deletes temp files over an hour old, so one this old means
+#     no backup has run since the kill.)
 # A healthy run prints one line and sends nothing. A run with a problem sends
 # one email and exits 1, so the Job also shows Failed.
 #
@@ -31,7 +33,9 @@ spec:
   startingDeadlineSeconds: 3600
   jobTemplate:
     spec:
-      backoffLimit: 1
+      # No Job retry: a retried pod would send the email again. curl retries the
+      # send itself (see below).
+      backoffLimit: 0
       activeDeadlineSeconds: 300
       template:
         spec:
@@ -62,7 +66,10 @@ spec:
                 # as ~29.5h, so 26h catches it with margin for a slow dump.
                 - name: MAX_AGE_HOURS
                   value: "26"
-                # Tonight's first dump of the empty database was 36508 bytes.
+                # 20000 catches garbage and near-empty dumps. A wiped and reseeded
+                # schema still dumps about 36.5 KB, so wipe detection is the backup
+                # job's half-size check, not this one. Tonight's first dump of the
+                # empty database was 36508 bytes.
                 - name: MIN_BYTES
                   value: "20000"
               volumeMounts:
@@ -93,7 +100,8 @@ spec:
                   # tab and newline.
                   jstr() {
                     printf '"'
-                    sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r//g' \
+                    tr -d '\r' | tr -c '\11\12\40-\176' '?' \
+                      | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' \
                       | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g' | tr -d '\n'
                     printf '"'
                   }
@@ -130,8 +138,9 @@ spec:
                     add "no atlas-*.dump files in ${dir}"
                   fi
 
-                  # Temp files from a killed run. The backup removes them after
-                  # a day on its own, so one still here means it did not run.
+                  # Temp files from a killed backup run. The backup deletes them
+                  # once they are over an hour old, so one still here after a day
+                  # means no backup has run since the kill.
                   stale=$(find "$dir" -maxdepth 1 -name '.atlas-*.dump.tmp' -mmin +1440 | wc -l | tr -d ' ')
                   if [ "$stale" -gt 0 ]; then
                     add "${stale} leftover .atlas-*.dump.tmp file(s) older than a day in ${dir} (a backup run was killed)"
@@ -171,10 +180,13 @@ spec:
                     printf '}\n'
                   } > "$json"
 
+                  # Idempotency-Key: a manual re-run the same day does not send a duplicate.
                   code=$(curl -sS -o /tmp/resend.out -w '%{http_code}' --max-time 30 \
+                    --retry 3 --retry-all-errors --retry-delay 5 \
                     -X POST https://api.resend.com/emails \
                     -H "Authorization: Bearer ${RESEND_API_KEY}" \
                     -H 'Content-Type: application/json' \
+                    -H "Idempotency-Key: atlas-backup-watchdog-$(date -u +%Y%m%d)" \
                     --data-binary @"$json") || code=000
                   case "$code" in
                     2??) echo "alert emailed to ${ALERT_TO}" >&2 ;;
