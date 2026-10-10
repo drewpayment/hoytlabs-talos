@@ -1,0 +1,83 @@
+# Atlas's own PostgreSQL, managed by the CloudNativePG operator
+# (infrastructure/controllers/cloudnative-pg). Replaces the shared single-instance
+# Postgres in the orbit namespace, which lost its data directory twice.
+#
+# CNPG generates these Secrets in this namespace:
+#   - atlas-db-app  owner role `atlas`; key `uri` is the web app's DATABASE_URL
+#                   (postgresql://atlas:<pw>@atlas-db-rw:5432/atlas)
+# CNPG initdb creates database `atlas` owned by role `atlas`, and migrations run
+# as that role. No superuser access is enabled: scripts/ensure-db.ts therefore
+# has no admin credential and skips provisioning, which is the correct outcome
+# here. (A superuser secret would be needed only if the role or database were
+# ever lost and had to be recreated by the app.)
+#
+# Image: PostgreSQL 17.11 on Debian 13 (trixie), tag 17.11-standard-trixie. The
+# bare 17.11 tag is Debian 11 (bullseye, EOL Aug 2026, ICU 67). Trixie ships
+# ICU 76. Pinning the distro suffix keeps the glibc/ICU collation version fixed,
+# so a base-image bump cannot change collation versions and force a REINDEX of
+# every text index.
+# Atlas was verified against PostgreSQL 15 (the shared
+# orbit server, full 443-test suite). PG 17 has not been run against Atlas yet;
+# the migrations are plain SQL, and the only version-sensitive one (0005's
+# STORED tsvector column + GIN index) is supported on 17.
+#
+# Locale is fixed at initdb time and cannot be changed later. orbit's atlas
+# database is en_US.UTF-8, so the ICU provider with en-US collation keeps
+# ORDER BY and case-insensitive/full-text behaviour for non-ASCII text the same
+# as before. CNPG would otherwise default to C.
+#
+# Storage is node-local (openebs-hostpath-retain, see db-storageclass.yaml): each
+# PV is pinned to the node it was created on. Two instances with required pod
+# anti-affinity put each instance on a different node, so losing one node fails
+# the primary over to the replica. Node-local storage is still not durable
+# against losing both nodes or their disks; backups are a follow-up.
+#
+# Prune=false,Delete=false: if this Cluster ever leaves git (a bad revert, a
+# dropped kustomization entry), ArgoCD must not delete it. Deleting the Cluster
+# cascades through CNPG ownerReferences to the PVCs, and the data then goes with
+# them. Delete it by hand only when that is intended.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: atlas-db
+  namespace: atlas
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.11-standard-trixie
+
+  # Spread instances across nodes; "required" means a second instance stays
+  # Pending rather than co-locating with the primary on the same node.
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+    podAntiAffinityType: required
+
+  bootstrap:
+    initdb:
+      database: atlas
+      owner: atlas
+      localeProvider: icu
+      icuLocale: en-US
+      localeCollate: en_US.utf8
+      localeCType: en_US.utf8
+
+  # No superuser secret is generated. See the header comment.
+  enableSuperuserAccess: false
+
+  storage:
+    size: 5Gi
+    storageClass: openebs-hostpath-retain
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
