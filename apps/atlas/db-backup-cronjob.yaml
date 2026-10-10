@@ -1,0 +1,103 @@
+# Nightly logical backup of the atlas Postgres database.
+#
+# Why this exists: atlas's database was lost twice because the Postgres server
+# ran on an emptyDir, and there has never been a backup. The server now has a
+# persistent PVC, but a PVC is not a backup (it dies with a bad delete or a bad
+# migration). This job writes a custom-format pg_dump to the NAS every night,
+# so the dumps live off-cluster on TrueNAS, not on the cluster's own storage.
+#
+# Retention: dumps named atlas-<UTC timestamp>.dump are kept for 30 days and
+# pruned by the job itself. Each dump is verified with `pg_restore --list`
+# before it is moved into place, so a truncated or failed dump never looks
+# like a good backup.
+#
+# Restore (into the atlas database, from a one-off pod that mounts the PVC):
+#   kubectl -n atlas run atlas-restore --rm -it --restart=Never \
+#     --image=postgres:15-alpine \
+#     --overrides='{"spec":{"containers":[{"name":"atlas-restore","image":"postgres:15-alpine","command":["sh","-c","pg_restore --clean --if-exists --no-owner --no-privileges -d \"$DATABASE_URL\" /backups/<file>.dump"],"env":[{"name":"DATABASE_URL","valueFrom":{"secretKeyRef":{"name":"atlas-secret","key":"DATABASE_URL"}}}],"volumeMounts":[{"name":"backups","mountPath":"/backups"}]}],"volumes":[{"name":"backups","persistentVolumeClaim":{"claimName":"atlas-db-backups"}}]}}'
+#
+# Manual run (same as the nightly job, outside the schedule):
+#   kubectl -n atlas create job --from=cronjob/atlas-db-backup atlas-db-backup-manual
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: atlas-db-backup
+  namespace: atlas
+spec:
+  # 02:30 runs ahead of the 03:00 purge-trash job, so the backup captures the
+  # database before any nightly cleanup touches it.
+  schedule: "30 2 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 900
+      template:
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: atlas
+          # fsGroup makes the NFS-backed /backups volume writable by the
+          # non-root postgres user (uid/gid 999).
+          securityContext:
+            fsGroup: 999
+          containers:
+            - name: pg-dump
+              # pg_dump must match the server's major version (the atlas
+              # database runs Postgres 15). If the server major changes, bump
+              # this image tag to match in the same change.
+              image: postgres:15-alpine
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-secret
+                      key: DATABASE_URL
+                - name: PGCONNECT_TIMEOUT
+                  value: "15"
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+              # The script runs under `set -eu`, so any failure (dump, verify,
+              # move, prune) exits non-zero and the Job retries. The dump is
+              # written to a dot-prefixed temp file that is removed on exit, so
+              # a failed run never leaves a partial atlas-*.dump behind.
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  ts=$(date -u +%Y%m%dT%H%M%SZ)
+                  name="atlas-${ts}.dump"
+                  final="/backups/${name}"
+                  tmp="/backups/.${name}.tmp"
+                  trap 'rm -f "$tmp"' EXIT
+                  pg_dump --format=custom --no-owner --no-privileges --file "$tmp" "$DATABASE_URL"
+                  test -s "$tmp"
+                  pg_restore --list "$tmp" >/dev/null
+                  mv "$tmp" "$final"
+                  find /backups -maxdepth 1 -name 'atlas-*.dump' -mtime +30 -delete
+                  count=$(find /backups -maxdepth 1 -name 'atlas-*.dump' | wc -l)
+                  echo "backup complete: ${name} size=$(du -h "$final" | cut -f1) retained=${count}"
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 999
+                runAsGroup: 999
+                allowPrivilegeEscalation: false
+                seccompProfile:
+                  type: RuntimeDefault
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  memory: 512Mi
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: atlas-db-backups

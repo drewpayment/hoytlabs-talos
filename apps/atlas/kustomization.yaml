@@ -15,8 +15,10 @@ resources:
   - bootstrap-job.yaml
   - web-deployment.yaml
   - web-svc.yaml
-  # Scheduled work (30-day trash retention)
-  - purge-trash-cronjob.yaml
+  # Scheduled work
+  - purge-trash-cronjob.yaml   # 30-day trash retention
+  - db-backup-pvc.yaml         # NAS-backed volume for database dumps
+  - db-backup-cronjob.yaml     # nightly pg_dump, 30-day retention
   # Networking
   - http-route.yaml
 
