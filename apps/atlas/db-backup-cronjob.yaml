@@ -29,6 +29,10 @@
 # key into atlas-secret (externalsecret.yaml). Without it nothing watches for
 # failed Jobs: three purge-trash Jobs failed unnoticed before this was added.
 #
+# Failure email: a failed run emails ALERT_TO through Resend, with the last 20
+# lines of this Job's output. db-backup-watchdog-cronjob.yaml covers the case
+# where this Job never runs at all.
+#
 # Manual run (same as the nightly job, outside the schedule):
 #   kubectl -n atlas create job --from=cronjob/atlas-db-backup atlas-db-backup-manual
 apiVersion: batch/v1
@@ -117,6 +121,19 @@ spec:
                       name: atlas-secret
                       key: ATLAS_BACKUP_HEALTHCHECK_URL
                       optional: true
+                # Failure email (Resend, the same transport the app uses). Unset
+                # RESEND_API_KEY would make the failure alert silently unsendable,
+                # so it is not optional.
+                - name: RESEND_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-secret
+                      key: ATLAS_RESEND_API_KEY
+                      optional: false
+                - name: ALERT_TO
+                  value: "drew.payment@gmail.com"
+                - name: ALERT_FROM
+                  value: "Atlas Backups <atlas@support.hoytlabs.app>"
                 - name: PGCONNECT_TIMEOUT
                   value: "15"
               volumeMounts:
@@ -136,6 +153,55 @@ spec:
                   retain_days=30   # older dumps beyond the newest N are pruned after this
                   tmp=""           # set while the temp dump exists; cleared after the mv
 
+                  # Key messages go to stderr (the pod log) and to $log, which the
+                  # failure email quotes. $log is truncated so it holds this run only.
+                  log=/tmp/backup.log
+                  : > "$log"
+                  say() {
+                    echo "$*" >&2
+                    echo "$*" >> "$log"
+                  }
+
+                  # JSON string literal from stdin: escapes backslash, quote,
+                  # tab and newline.
+                  jstr() {
+                    printf '"'
+                    sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r//g' \
+                      | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g' | tr -d '\n'
+                    printf '"'
+                  }
+
+                  # Failure email. Best effort: a failed send is logged, and the
+                  # Job still exits with the backup's own status.
+                  alert_failure() {
+                    body=/tmp/alert-body.txt
+                    json=/tmp/alert.json
+                    {
+                      echo "The atlas nightly database backup failed (exit $1) at $(date -u '+%Y-%m-%d %H:%M') UTC."
+                      echo
+                      echo "Last 20 lines of the job output:"
+                      tail -n 20 "$log"
+                      echo
+                      echo "The full output is in the logs of the failed Job's pod (kubectl -n atlas get pods)."
+                    } > "$body"
+                    {
+                      printf '{"from":'
+                      printf '%s' "$ALERT_FROM" | jstr
+                      printf ',"to":'
+                      printf '%s' "$ALERT_TO" | jstr
+                      printf ',"subject":'
+                      printf '[atlas] database backup FAILED (exit %s)' "$1" | jstr
+                      printf ',"text":'
+                      jstr < "$body"
+                      printf '}\n'
+                    } > "$json"
+                    wget -q -O /dev/null -T 15 \
+                      --header 'Content-Type: application/json' \
+                      --header "Authorization: Bearer ${RESEND_API_KEY}" \
+                      --post-file "$json" https://api.resend.com/emails \
+                      || say "WARNING: failure email was not sent"
+                  }
+
                   # Dead-man's switch. Success pings the URL; any failure pings
                   # URL/fail (healthchecks.io convention). Runs from the EXIT trap,
                   # so it sees the real exit status in $?.
@@ -146,7 +212,7 @@ spec:
                   on_exit() {
                     rc=$?
                     if [ -n "$tmp" ]; then rm -f "$tmp"; fi
-                    if [ "$rc" -eq 0 ]; then ping; else ping /fail; fi
+                    if [ "$rc" -eq 0 ]; then ping; else ping /fail; alert_failure "$rc" || true; fi
                     exit "$rc"
                   }
                   trap on_exit EXIT
@@ -156,7 +222,7 @@ spec:
                   # Host guard. If the secret is ever repointed, this must refuse
                   # rather than quietly back up the wrong database.
                   if [ "$PGHOST" != atlas-db-rw ]; then
-                    echo "ERROR: PGHOST is \"$PGHOST\", not atlas-db-rw; refusing to dump" >&2
+                    say "ERROR: PGHOST is \"$PGHOST\", not atlas-db-rw; refusing to dump"
                     exit 1
                   fi
 
@@ -166,7 +232,7 @@ spec:
                   until pg_isready -t 5 >/dev/null 2>&1; do
                     tries=$((tries + 1))
                     if [ "$tries" -ge 60 ]; then
-                      echo "ERROR: database not reachable after 10 minutes" >&2
+                      say "ERROR: database not reachable after 10 minutes"
                       exit 1
                     fi
                     sleep 10
@@ -174,19 +240,19 @@ spec:
 
                   # Server identity. CNPG forces cluster_name to the Cluster name, so
                   # this proves the host we reached really is the atlas-db Cluster.
-                  cluster_name=$(psql -At -c "show cluster_name")
+                  cluster_name=$(psql -At -c "show cluster_name" 2>>"$log")
                   if [ "$cluster_name" != atlas-db ]; then
-                    echo "ERROR: server cluster_name is \"$cluster_name\", not atlas-db; refusing to dump" >&2
+                    say "ERROR: server cluster_name is \"$cluster_name\", not atlas-db; refusing to dump"
                     exit 1
                   fi
 
                   # A pg_dump whose major version differs from the server's can
                   # produce a dump the server cannot restore cleanly. Refuse to run.
                   dump_major=$(pg_dump --version | awk '{print $3}' | cut -d. -f1)
-                  server_version=$(psql -At -c "show server_version")
+                  server_version=$(psql -At -c "show server_version" 2>>"$log")
                   server_major=$(echo "$server_version" | cut -d. -f1)
                   if [ "$dump_major" != "$server_major" ]; then
-                    echo "ERROR: pg_dump is major ${dump_major} but the server is major ${server_major}; bump the image tag" >&2
+                    say "ERROR: pg_dump is major ${dump_major} but the server is major ${server_major}; bump the image tag"
                     exit 1
                   fi
 
@@ -200,13 +266,13 @@ spec:
                   # Run in the background and `wait`, so the TERM/INT trap can
                   # fire while pg_dump is running.
                   pg_dump --format=custom --no-owner --no-privileges \
-                    --lock-wait-timeout=120s --file "$tmp" &
+                    --lock-wait-timeout=120s --file "$tmp" 2>>"$log" &
                   wait "$!"
 
                   # Validate. test -s catches an empty file. pg_restore -f /dev/null
                   # reads every block of the archive (--list reads only the TOC).
                   test -s "$tmp"
-                  pg_restore -f /dev/null "$tmp"
+                  pg_restore -f /dev/null "$tmp" 2>>"$log"
 
                   # Newest existing dump, for the size sanity check below. The
                   # names sort chronologically.
@@ -224,7 +290,7 @@ spec:
                   if [ -n "$prev" ]; then
                     prev_size=$(stat -c %s "$prev")
                     if [ $((new_size * 2)) -lt "$prev_size" ]; then
-                      echo "WARNING: $(basename "$final") is ${new_size} bytes, under half of the previous $(basename "$prev") at ${prev_size} bytes. Dump kept; check whether the database was wiped." >&2
+                      say "WARNING: $(basename "$final") is ${new_size} bytes, under half of the previous $(basename "$prev") at ${prev_size} bytes. Dump kept; check whether the database was wiped."
                       status=2
                     fi
                   fi
@@ -240,7 +306,7 @@ spec:
                     day=$(basename "$f" | cut -c7-14)
                     if [ "$day" -lt "$cutoff" ]; then
                       rm -f "$f"
-                      echo "pruned $(basename "$f")"
+                      say "pruned $(basename "$f")"
                     fi
                   done
                   # Abandoned temp files from killed runs (older than a day).
@@ -248,11 +314,11 @@ spec:
 
                   count=$(ls -1 "${dir}"/atlas-[0-9]*.dump 2>/dev/null | wc -l | tr -d ' ')
                   if [ "$count" -lt 1 ]; then
-                    echo "ERROR: no dumps retained after pruning" >&2
+                    say "ERROR: no dumps retained after pruning"
                     exit 1
                   fi
 
-                  echo "backup complete: ${name} size=$(du -h "$final" | cut -f1) retained=${count}"
+                  say "backup complete: ${name} size=$(stat -c %s "$final") bytes retained=${count}"
                   exit "$status"
               securityContext:
                 runAsNonRoot: true
