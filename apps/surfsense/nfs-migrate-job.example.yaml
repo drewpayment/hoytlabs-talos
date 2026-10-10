@@ -1,0 +1,94 @@
+# EXAMPLE ONLY. Intentionally NOT listed in kustomization.yaml, so ArgoCD never
+# applies or prunes it. Run once by hand during the cutover window, after the
+# consumers are scaled to 0 in git and the -v2 claims are Bound:
+#
+#   sed -n '/^apiVersion/,$p' apps/surfsense/nfs-migrate-job.example.yaml \
+#     | kubectl -n surfsense create -f -
+#   kubectl -n surfsense logs job/surfsense-nfs-migrate -f
+#   kubectl -n surfsense delete job surfsense-nfs-migrate   # after verification
+#
+# Design choices:
+# - COPY (cp -a), not mv. The originals stay in kubernetes-pvcs so that the
+#   rollback commit (point consumers back at the old claims) works with no data
+#   loss before the cutover. Originals are removed in a later, separate change.
+# - The NAS export is mounted directly with an NFS volume, not through PVCs.
+#   Each PVC is its own mount point in a pod, so a rename between two PVC mounts
+#   would be EXDEV. (A cp is used regardless, so this is about cleanliness and
+#   about allowing a later mv if the copy is ever too slow.)
+# - Runs as root. The backend and worker already write here as root, and the
+#   files they create are root-owned, so the export does not squash root.
+# - Only claimed entries are copied. Scratch (gitingest, playwright profiles,
+#   pymp-*, tmp*.md, torchinductor_root) and redpanda orphans stay behind in
+#   kubernetes-pvcs and are not migrated.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: surfsense-nfs-migrate
+  namespace: surfsense
+  labels:
+    app: surfsense-nfs-migrate
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: surfsense-nfs-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          # Same image the backend runs; it ships sh, cp, diff, stat and find.
+          image: ghcr.io/modsetter/surfsense-backend:0.0.39
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              OLD=/mnt/tank/appdata/kubernetes-pvcs
+              NEW=/mnt/tank/appdata/surfsense
+              OBJ=$NEW/surfsense-object-store-v2-pvc
+              TMP=$NEW/surfsense-shared-tmp-v2-pvc
+              RDS=$NEW/surfsense-redis-v2-pvc
+
+              echo "== destination dirs (expect 0777-ish, owned root:root)"
+              stat -c '%A %U:%G %n' "$OBJ" "$TMP" "$RDS"
+
+              copy() {
+                src="$OLD/$1"; dst="$2"
+                [ -e "$src" ] || { echo "MISSING source $src"; exit 1; }
+                [ -d "$dst" ] || { echo "MISSING destination $dst"; exit 1; }
+                [ -z "$(ls -A "$dst")" ] || { echo "destination not empty: $dst"; exit 1; }
+                echo "copy $1 -> $dst"
+                cp -a "$src" "$dst/"
+              }
+
+              copy knowledge_store "$OBJ"     # object store (FILE_STORAGE_LOCAL_PATH)
+              copy dump.rdb "$RDS"            # redis RDB
+              copy appendonlydir "$RDS"       # redis AOF
+
+              echo "== verify: byte-for-byte compare, must print no differences"
+              diff -rq "$OLD/knowledge_store" "$OBJ/knowledge_store"
+              diff -rq "$OLD/dump.rdb" "$RDS/dump.rdb"
+              diff -rq "$OLD/appendonlydir" "$RDS/appendonlydir"
+              echo "== verify: file counts"
+              find "$OLD/knowledge_store" | wc -l
+              find "$OBJ/knowledge_store" | wc -l
+              echo "MIGRATION OK"
+          volumeMounts:
+            - name: nas
+              mountPath: /mnt/tank/appdata
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: nas
+          nfs:
+            server: 192.168.86.44
+            path: /mnt/tank/appdata
