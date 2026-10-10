@@ -8,6 +8,8 @@ resources:
   - configmap.yaml
   - externalsecret.yaml
   # Atlas's own PostgreSQL (CloudNativePG, 2 instances); wave 0
+  # StorageClass is cluster-scoped; it is applied with the app, but not namespaced
+  - db-storageclass.yaml
   - cnpg-cluster.yaml
   # Application services
   - bootstrap-job.yaml

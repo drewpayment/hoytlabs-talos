@@ -1,0 +1,20 @@
+# Retain-reclaim variant of the cluster's openebs-hostpath StorageClass, used by
+# the atlas-db Cluster. Same provisioner, BasePath and binding mode as
+# openebs-hostpath (copied from the live object); only reclaimPolicy differs.
+# With Delete, removing the Cluster or its PVCs would also delete the node-local
+# data, so a PV that is released stays on disk for manual recovery instead.
+# StorageClass is cluster-scoped, so this file is not namespaced.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: openebs-hostpath-retain
+  annotations:
+    cas.openebs.io/config: |
+      - name: StorageType
+        value: "hostpath"
+      - name: BasePath
+        value: "/var/openebs/local"
+    openebs.io/cas-type: local
+provisioner: openebs.io/local
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
