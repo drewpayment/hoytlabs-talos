@@ -1,0 +1,62 @@
+# Atlas's own PostgreSQL, managed by the CloudNativePG operator
+# (infrastructure/controllers/cloudnative-pg). Replaces the shared single-instance
+# Postgres in the orbit namespace, which lost its data directory twice.
+#
+# CNPG generates these Secrets in this namespace:
+#   - atlas-db-app        owner role `atlas`; key `uri` is the web app's DATABASE_URL
+#                         (postgresql://atlas:<pw>@atlas-db-rw:5432/atlas)
+#   - atlas-db-superuser  role `postgres`; used ONLY by the bootstrap Job, whose
+#                         scripts/ensure-db.ts must CREATE ROLE/DATABASE if they
+#                         are missing (enableSuperuserAccess below)
+#
+# Image: PostgreSQL 17. Atlas was verified against PG 17 originally and against
+# 15 later (the shared orbit server); the migrations are plain SQL compatible
+# with both.
+#
+# Storage is node-local (openebs-hostpath): the PV is pinned to the node it was
+# created on. Two instances with required pod anti-affinity put each instance on
+# a different node, so losing one node fails the primary over to the replica
+# rather than taking the database down. Node-local storage is still not
+# durable against losing both nodes or the disks; backups are a follow-up.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: atlas-db
+  namespace: atlas
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.11
+
+  # Spread instances across nodes; "required" means a second instance stays
+  # Pending rather than co-locating with the primary on the same node.
+  affinity:
+    enablePodAntiAffinity: true
+    topologyKey: kubernetes.io/hostname
+    podAntiAffinityType: required
+
+  bootstrap:
+    initdb:
+      database: atlas
+      owner: atlas
+
+  # Creates the atlas-db-superuser Secret. The bootstrap Job (db:ensure) needs a
+  # superuser to create atlas's role and database if they are missing; the web
+  # pod never uses this credential.
+  enableSuperuserAccess: true
+
+  storage:
+    size: 5Gi
+    storageClass: openebs-hostpath
+
+  postgresql:
+    parameters:
+      max_connections: "100"
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi

@@ -6,32 +6,34 @@
 # re-run will NOT change the existing admin's password; that requires a manual
 # update, not a resync.
 #
-# PreSync, NOT PostSync (which is what sprinkler-bootstrap uses, and what this
-# used until it deadlocked in the 2026-08-30 recovery):
+# Ordering (ArgoCD sync waves; the Job is a Sync hook, not PreSync or PostSync):
+#   wave 0  atlas-db Cluster (cnpg-cluster.yaml) - creates the Postgres cluster
+#           and the atlas-db-app / atlas-db-superuser Secrets this Job reads.
+#   wave 1  this Job - an initContainer waits until atlas-db-rw accepts TCP
+#           connections, because ArgoCD does not know how to health-check a CNPG
+#           Cluster and would otherwise start this Job while initdb is running.
+#   wave 2  atlas-web Deployment - rolls out only after migrations + seed ran.
 #
-# ArgoCD will not start PostSync hooks until every sync-phase resource reports
-# healthy. atlas-web only becomes healthy once it can reach its database - and
-# after the shared Postgres lost its data directory, atlas's role no longer
-# existed, so it never could. The Job that recreates the role was the PostSync
-# hook, which was waiting on the Deployment, which was waiting on the role.
-# The sync sat at "waiting for healthy state of apps/Deployment/atlas-web"
-# indefinitely and the self-healing provisioning never got to run.
-#
-# PreSync inverts that: the database is made ready *before* the new pods roll,
-# so the very scenario db:ensure exists for is one it can actually recover.
-# It also means a failed migration aborts the sync before any new pod is
-# rolled out, rather than after.
+# Why not PostSync (what sprinkler-bootstrap uses): ArgoCD will not start
+# PostSync hooks until every sync-phase resource reports healthy. atlas-web only
+# becomes healthy once it can reach its database, and after the shared Postgres
+# lost its data directory the role never existed. The Job that recreates the
+# role was the PostSync hook, which was waiting on the Deployment, which was
+# waiting on the role - the sync wedged in the 2026-08-30 recovery. Running the
+# Job before the Deployment avoids that loop.
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: atlas-bootstrap
   namespace: atlas
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 3
-  activeDeadlineSeconds: 300
+  # Covers the wait for a fresh cluster's initdb as well as migrate + seed.
+  activeDeadlineSeconds: 900
   template:
     metadata:
       labels:
@@ -39,16 +41,58 @@ spec:
     spec:
       serviceAccountName: atlas
       restartPolicy: Never
+      initContainers:
+        # Wait for the CNPG read-write service to accept connections (the
+        # primary pod is Ready). Uses bun, which the bootstrap image already
+        # ships, so no extra image is pulled. Gives up after ~10 minutes and
+        # fails the Job, which fails the sync; ArgoCD selfHeal retries it.
+        - name: wait-for-db
+          image: ghcr.io/drewpayment/atlas-bootstrap:latest
+          imagePullPolicy: Always
+          command:
+            - bun
+            - -e
+            - |
+              const net = require("net");
+              const deadline = Date.now() + 600_000;
+              const tryOnce = () => new Promise((ok) => {
+                const s = net.connect(5432, "atlas-db-rw");
+                s.on("connect", () => { s.end(); ok(true); });
+                s.on("error", () => ok(false));
+                s.setTimeout(5000, () => { s.destroy(); ok(false); });
+              });
+              (async () => {
+                while (Date.now() < deadline) {
+                  if (await tryOnce()) { console.log("atlas-db-rw is accepting connections"); return; }
+                  await new Promise((r) => setTimeout(r, 5000));
+                }
+                console.error("timed out waiting for atlas-db-rw");
+                process.exit(1);
+              })();
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
       containers:
         - name: bootstrap
           image: ghcr.io/drewpayment/atlas-bootstrap:latest
           imagePullPolicy: Always
           env:
+            # CNPG-generated app credentials; `uri` points at atlas-db-rw.
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: atlas-secret
-                  key: DATABASE_URL
+                  name: atlas-db-app
+                  key: uri
             - name: ADMIN_EMAIL
               valueFrom:
                 secretKeyRef:
@@ -59,23 +103,24 @@ spec:
                 secretKeyRef:
                   name: atlas-secret
                   key: ADMIN_PASSWORD
-            # Postgres server superuser, for the db:ensure step only - it
-            # creates atlas's role/database when they're missing and keeps the
-            # role password in step with DATABASE_URL. Scoped to this Job on
-            # purpose: the web pod is internet-facing and has no reason to
-            # hold a credential that can create roles. Optional so the Job
-            # still runs (and just skips provisioning) if the keys are absent.
+            # Postgres superuser, for the db:ensure step only - it creates
+            # atlas's role/database when they're missing and keeps the role
+            # password in step with DATABASE_URL. Generated by the CNPG Cluster
+            # (enableSuperuserAccess) and scoped to this Job on purpose: the web
+            # pod is internet-facing and has no reason to hold a credential that
+            # can create roles. Optional so the Job still runs (and just skips
+            # provisioning, see scripts/ensure-db.ts) if the Secret is absent.
             - name: ATLAS_DB_ADMIN_USER
               valueFrom:
                 secretKeyRef:
-                  name: atlas-secret
-                  key: ATLAS_DB_ADMIN_USER
+                  name: atlas-db-superuser
+                  key: username
                   optional: true
             - name: ATLAS_DB_ADMIN_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: atlas-secret
-                  key: ATLAS_DB_ADMIN_PASSWORD
+                  name: atlas-db-superuser
+                  key: password
                   optional: true
           securityContext:
             runAsNonRoot: true

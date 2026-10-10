@@ -7,6 +7,8 @@ resources:
   - serviceaccount.yaml
   - configmap.yaml
   - externalsecret.yaml
+  # Atlas's own PostgreSQL (CloudNativePG, 2 instances); wave 0
+  - cnpg-cluster.yaml
   # Application services
   - bootstrap-job.yaml
   - web-deployment.yaml
@@ -18,7 +20,7 @@ resources:
 
 # Release pinning (GitOps deploy): bump newTag to the atlas merge commit SHA
 # after CI pushes images. The tag change is what makes ArgoCD roll the
-# deployment and re-run the PostSync bootstrap (migrate+seed) Job.
+# deployment and re-run the bootstrap (migrate+seed) Sync hook.
 #
 # Always the FULL 40-char SHA - short SHAs won't resolve, since CI tags
 # images with the full ${{ github.sha }}.
