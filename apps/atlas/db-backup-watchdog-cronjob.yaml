@@ -58,9 +58,10 @@ spec:
                 - name: ALERT_FROM
                   value: "Atlas Backups <atlas@support.hoytlabs.app>"
                 # The backup runs at 03:30 and this check at 09:00, so a healthy
-                # newest dump is about 5.5 hours old.
+                # newest dump is about 5.5 hours old. A single missed night shows
+                # as ~29.5h, so 26h catches it with margin for a slow dump.
                 - name: MAX_AGE_HOURS
-                  value: "30"
+                  value: "26"
                 # Tonight's first dump of the empty database was 36508 bytes.
                 - name: MIN_BYTES
                   value: "20000"
