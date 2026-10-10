@@ -81,21 +81,25 @@ kubectl cnpg -n atlas status atlas-db
 
 ## Rollback
 
-- **Superseded by the cleanup PR.** Before it, reverting this PR was a rollback:
-  the orbit Postgres still ran and the kept `DATABASE_URL` mapping still pointed at
-  it. The cleanup PR removes `apps/orbit` (the orbit Postgres and its PVC, which
-  is `Delete` reclaim, are gone) and removes the `DATABASE_URL` and
-  `ATLAS_DB_ADMIN_*` mappings. A plain revert of #38 is no longer a rollback.
-  The only rollback now is to restore the NAS dump into a fresh `Cluster`
-  (see the restore template in `db-restore-job.example.yaml`).
-- The `atlas-db` Cluster is NOT pruned (`Prune=false`), so ArgoCD leaves it
-  running after a revert. Delete it by hand only when sure its data is not needed:
-  `kubectl -n atlas delete cluster atlas-db`. Its PVCs use the Retain
-  StorageClass, so the data on disk is kept.
-- If the revert sync wedges, run `kubectl apply -f apps/atlas/externalsecret.yaml`
-  from the reverted tree, then sync again.
-- After the cleanup PR, a plain revert is not a rollback. Rollback is "restore
-  from the NAS dump into a fresh `Cluster`".
+A plain revert of #38 is not a rollback after the cleanup PR: the orbit Postgres
+is gone. Rollback is a restore of a NAS dump from the `atlas-db-backups` PVC
+(written nightly by `db-backup-cronjob.yaml`).
+
+1. Cluster healthy, data bad: follow the procedure in
+   `apps/atlas/db-restore-job.example.yaml` against the existing `atlas-db`.
+2. Cluster unrecoverable:
+   a. Stop writes: scale `atlas-web` to 0. Git selfHeal will revert a manual
+      scale, so do it through git or pause the `applications` ApplicationSet
+      (`apps/appset.yaml`) first.
+   b. `kubectl -n atlas delete cluster atlas-db`. ArgoCD does not delete it
+      (`Prune=false,Delete=false`).
+   c. Delete the atlas-db PVCs and their Released PVs. They use the Retain
+      StorageClass, so the PVs survive the PVC deletion and must be removed by hand.
+   d. `argocd app sync atlas`. ArgoCD recreates `Cluster/atlas-db` with the SAME
+      name (the restore Job's PGHOST and cluster_name guards require it) and runs
+      the bootstrap Job.
+   e. Run the restore template from (1) once the new Cluster is healthy.
+   f. Resume the ApplicationSet and scale `atlas-web` back up.
 
 ## Operations
 
