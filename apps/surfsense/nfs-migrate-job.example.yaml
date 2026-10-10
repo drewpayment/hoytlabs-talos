@@ -1,25 +1,31 @@
 # EXAMPLE ONLY. Intentionally NOT listed in kustomization.yaml, so ArgoCD never
 # applies or prunes it. Run once by hand during the cutover window, after the
-# consumers are scaled to 0 in git and the -v2 claims are Bound:
+# writers are stopped (plan: docs/plans/2026-10-10-nfs-csi-isolation.md, steps
+# C1a/C1b) and the -v2 claims are Bound:
 #
 #   sed -n '/^apiVersion/,$p' apps/surfsense/nfs-migrate-job.example.yaml \
 #     | kubectl -n surfsense create -f -
 #   kubectl -n surfsense logs job/surfsense-nfs-migrate -f
 #   kubectl -n surfsense delete job surfsense-nfs-migrate   # after verification
 #
+# Rerun after a partial failure: set RESET to "1" in the env block below (copy
+# the file first) and create it again. RESET empties ONLY the two -v2 destinations
+# (object-store-v2 and redis-v2). The old share is never modified.
+#
 # Design choices:
 # - COPY (cp -a), not mv. The originals stay in kubernetes-pvcs so that the
 #   rollback commit (point consumers back at the old claims) works with no data
-#   loss before the cutover. Originals are removed in a later, separate change.
+#   loss before cutover. Originals are removed in a later, separate change.
 # - The NAS export is mounted directly with an NFS volume, not through PVCs.
 #   Each PVC is its own mount point in a pod, so a rename between two PVC mounts
-#   would be EXDEV. (A cp is used regardless, so this is about cleanliness and
-#   about allowing a later mv if the copy is ever too slow.)
+#   would be EXDEV. The copy does not depend on that.
 # - Runs as root. The backend and worker already write here as root, and the
 #   files they create are root-owned, so the export does not squash root.
 # - Only claimed entries are copied. Scratch (gitingest, playwright profiles,
 #   pymp-*, tmp*.md, torchinductor_root) and redpanda orphans stay behind in
 #   kubernetes-pvcs and are not migrated.
+# - Capabilities: cp -a needs CHOWN (owners), FOWNER and DAC_OVERRIDE (copy
+#   across owners), and FSETID (keep setgid bits on the setgid directories).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -37,9 +43,14 @@ spec:
       restartPolicy: Never
       containers:
         - name: migrate
-          # Same image the backend runs; it ships sh, cp, diff, stat and find.
+          # Same image the backend runs. TMPDIR=/shared_tmp comes from the image
+          # env, not from this manifest. The image ships sh, cp, cmp, diff, find,
+          # sort, stat, chown and chmod.
           image: ghcr.io/modsetter/surfsense-backend:0.0.39
           command: ["sh", "-c"]
+          env:
+            - name: RESET
+              value: "0"   # set to "1" only to rerun after a partial failure
           args:
             - |
               set -eu
@@ -49,29 +60,60 @@ spec:
               TMP=$NEW/surfsense-shared-tmp-v2-pvc
               RDS=$NEW/surfsense-redis-v2-pvc
 
-              echo "== destination dirs (expect 0777-ish, owned root:root)"
+              echo "== destination modes before copy"
               stat -c '%A %U:%G %n' "$OBJ" "$TMP" "$RDS"
+              for d in "$OBJ" "$TMP" "$RDS"; do
+                [ -d "$d" ] || { echo "MISSING destination $d"; exit 1; }
+              done
+
+              if [ "$RESET" = "1" ]; then
+                echo "RESET=1: emptying OBJ and RDS (old share untouched)"
+                for d in "$OBJ" "$RDS"; do
+                  case "$d" in
+                    "$NEW"/surfsense-*-v2-pvc) find "$d" -mindepth 1 -delete ;;
+                    *) echo "refusing to reset $d"; exit 1 ;;
+                  esac
+                done
+              fi
+
+              for d in "$OBJ" "$TMP" "$RDS"; do
+                [ -z "$(ls -A "$d")" ] || { echo "destination not empty: $d (set RESET=1 to clear OBJ and RDS)"; exit 1; }
+              done
 
               copy() {
                 src="$OLD/$1"; dst="$2"
                 [ -e "$src" ] || { echo "MISSING source $src"; exit 1; }
-                [ -d "$dst" ] || { echo "MISSING destination $dst"; exit 1; }
-                [ -z "$(ls -A "$dst")" ] || { echo "destination not empty: $dst"; exit 1; }
                 echo "copy $1 -> $dst"
                 cp -a "$src" "$dst/"
               }
-
               copy knowledge_store "$OBJ"     # object store (FILE_STORAGE_LOCAL_PATH)
               copy dump.rdb "$RDS"            # redis RDB
               copy appendonlydir "$RDS"       # redis AOF
 
-              echo "== verify: byte-for-byte compare, must print no differences"
+              echo "== redis data dir: owner and mode (redis runs 999:1000)"
+              chown 999:1000 "$RDS"
+              chmod 2770 "$RDS"
+              stat -c '%A %U:%G %n' "$RDS"
+
+              echo "== verify 1: owner, group, mode and path of every copied entry"
+              LIST_OLD=$(mktemp); LIST_NEW=$(mktemp)
+              ( cd "$OLD" && find knowledge_store appendonlydir dump.rdb -printf '%U:%G %m %p\n' | sort ) > "$LIST_OLD"
+              ( cd "$OBJ" && find knowledge_store -printf '%U:%G %m %p\n'
+                cd "$RDS" && find appendonlydir dump.rdb -printf '%U:%G %m %p\n' ) | sort > "$LIST_NEW"
+              wc -l "$LIST_OLD" "$LIST_NEW"
+              if ! cmp -s "$LIST_OLD" "$LIST_NEW"; then
+                echo "METADATA MISMATCH (old < > new):"
+                diff "$LIST_OLD" "$LIST_NEW" || true
+                exit 1
+              fi
+              echo "metadata listings identical"
+
+              echo "== verify 2: contents"
               diff -rq "$OLD/knowledge_store" "$OBJ/knowledge_store"
-              diff -rq "$OLD/dump.rdb" "$RDS/dump.rdb"
               diff -rq "$OLD/appendonlydir" "$RDS/appendonlydir"
-              echo "== verify: file counts"
-              find "$OLD/knowledge_store" | wc -l
-              find "$OBJ/knowledge_store" | wc -l
+              cmp "$OLD/dump.rdb" "$RDS/dump.rdb"
+              echo "contents identical"
+
               echo "MIGRATION OK"
           volumeMounts:
             - name: nas
@@ -80,7 +122,7 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER"]
+              add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "FSETID"]
           resources:
             requests:
               cpu: 100m
