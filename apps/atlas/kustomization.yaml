@@ -20,6 +20,7 @@ resources:
   - purge-trash-cronjob.yaml   # 30-day trash retention
   - db-backup-pvc.yaml         # NAS-backed volume for database dumps
   - db-backup-cronjob.yaml     # nightly pg_dump, 30-day retention
+  - db-backup-watchdog-cronjob.yaml  # 09:00 check of last night's dump; emails on failure
   # Networking
   - http-route.yaml
 

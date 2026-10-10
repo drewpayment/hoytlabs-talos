@@ -1,0 +1,215 @@
+# Dead-man's switch for the nightly atlas database backup (db-backup-cronjob.yaml).
+#
+# The backup Job runs at 03:30 New York time, and its failures are silent: this
+# cluster has no alerting, and three purge-trash Jobs failed unnoticed before.
+# This Job runs 5.5 hours later, inspects /backups (the PVC the backup writes),
+# and emails an alert through Resend when:
+#   - no atlas-*.dump exists,
+#   - the newest dump is older than MAX_AGE_HOURS,
+#   - the newest dump is smaller than MIN_BYTES (a wiped, reseeded database),
+#   - a .atlas-*.dump.tmp left by a killed backup run is more than a day old.
+#     (The backup deletes temp files over an hour old, so one this old means
+#     no backup has run since the kill.)
+# A healthy run prints one line and sends nothing. A run with a problem sends
+# one email and exits 1, so the Job also shows Failed.
+#
+# The mount is read-only. The dumps are 0600 and owned by uid 70 (the postgres
+# user in the backup container), so this runs as uid 70 to read them.
+#
+# Manual run (same as the nightly check, outside the schedule):
+#   kubectl -n atlas create job --from=cronjob/atlas-db-backup-watchdog atlas-db-backup-watchdog-manual
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: atlas-db-backup-watchdog
+  namespace: atlas
+spec:
+  # 09:00 New York time, 5.5 hours after the 03:30 backup.
+  schedule: "0 9 * * *"
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      # No Job retry: a retried pod would send the email again. curl retries the
+      # send itself (see below).
+      backoffLimit: 0
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: atlas
+          # Same group ownership as the backup Job (see db-backup-cronjob.yaml).
+          securityContext:
+            fsGroup: 70
+            fsGroupChangePolicy: OnRootMismatch
+          containers:
+            - name: watchdog
+              image: curlimages/curl:8.11.1
+              env:
+                # The API key is read by the container shell, so it never
+                # appears in the Job spec or in `kubectl describe`.
+                - name: RESEND_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: atlas-secret
+                      key: ATLAS_RESEND_API_KEY
+                      optional: false
+                - name: ALERT_TO
+                  value: "drew.payment@gmail.com"
+                - name: ALERT_FROM
+                  value: "Atlas Backups <atlas@support.hoytlabs.app>"
+                # The backup runs at 03:30 and this check at 09:00, so a healthy
+                # newest dump is about 5.5 hours old. A single missed night shows
+                # as ~29.5h, so 26h catches it with margin for a slow dump.
+                - name: MAX_AGE_HOURS
+                  value: "26"
+                # 20000 catches garbage and near-empty dumps. A wiped and reseeded
+                # schema still dumps about 36.5 KB, so wipe detection is the backup
+                # job's half-size check, not this one. Tonight's first dump of the
+                # empty database was 36508 bytes.
+                - name: MIN_BYTES
+                  value: "20000"
+              volumeMounts:
+                - name: backups
+                  mountPath: /backups
+                  readOnly: true
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  # Read-only checks. Nothing here writes to /backups.
+                  dir=/backups
+                  now=$(date -u +%s)
+                  max_age_s=$((MAX_AGE_HOURS * 3600))
+                  probfile=/tmp/problems.txt
+                  : > "$probfile"
+                  name=""
+                  size=""
+                  age_h=""
+                  count=0
+
+                  add() {
+                    printf '  - %s\n' "$1" >> "$probfile"
+                  }
+
+                  # JSON string literal from stdin: escapes backslash, quote,
+                  # tab and newline.
+                  jstr() {
+                    printf '"'
+                    tr -d '\r' | tr -c '\11\12\40-\176' '?' \
+                      | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' \
+                      | sed -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g' | tr -d '\n'
+                    printf '"'
+                  }
+
+                  # Dumps are named atlas-YYYYMMDDTHHMMSSZ.dump and sort by time.
+                  files=$(ls -1 "${dir}"/atlas-[0-9]*.dump 2>/dev/null | sort || true)
+                  if [ -n "$files" ]; then
+                    count=$(printf '%s\n' "$files" | wc -l | tr -d ' ')
+                    newest=$(printf '%s\n' "$files" | tail -n 1)
+                    name=$(basename "$newest")
+                    size=$(stat -c %s "$newest")
+                    ts=${name#atlas-}
+                    ts=${ts%.dump}
+                    case "$ts" in
+                      [0-9]*T[0-9]*Z)
+                        epoch=$(date -u -D '%Y%m%dT%H%M%SZ' -d "$ts" +%s 2>/dev/null) || epoch="" ;;
+                      *) epoch="" ;;
+                    esac
+                    if [ -z "$epoch" ]; then
+                      add "newest file name does not parse as atlas-YYYYMMDDTHHMMSSZ.dump: ${name}"
+                      age_h="unknown"
+                    else
+                      age_s=$((now - epoch))
+                      tenths=$((age_s * 10 / 3600))
+                      age_h="$((tenths / 10)).$((tenths % 10))h"
+                      if [ "$age_s" -gt "$max_age_s" ]; then
+                        add "newest dump is ${age_h} old (limit ${MAX_AGE_HOURS}h)"
+                      fi
+                    fi
+                    if [ "$size" -lt "$MIN_BYTES" ]; then
+                      add "newest dump is ${size} bytes (minimum ${MIN_BYTES})"
+                    fi
+                  else
+                    add "no atlas-*.dump files in ${dir}"
+                  fi
+
+                  # Temp files from a killed backup run. The backup deletes them
+                  # once they are over an hour old, so one still here after a day
+                  # means no backup has run since the kill.
+                  stale=$(find "$dir" -maxdepth 1 -name '.atlas-*.dump.tmp' -mmin +1440 | wc -l | tr -d ' ')
+                  if [ "$stale" -gt 0 ]; then
+                    add "${stale} leftover .atlas-*.dump.tmp file(s) older than a day in ${dir} (a backup run was killed)"
+                  fi
+
+                  if [ ! -s "$probfile" ]; then
+                    echo "backup ok: ${name} ${size} bytes, ${age_h} old, ${count} dump(s) in ${dir}"
+                    exit 0
+                  fi
+
+                  echo "WATCHDOG: atlas database backup problem" >&2
+                  cat "$probfile" >&2
+
+                  body=/tmp/alert-body.txt
+                  json=/tmp/alert.json
+                  {
+                    echo "The atlas nightly database backup check failed at $(date -u '+%Y-%m-%d %H:%M') UTC."
+                    echo
+                    echo "Failed checks:"
+                    cat "$probfile"
+                    echo
+                    echo "Newest dump: ${name:-none}"
+                    echo "Size: ${size:-n/a} bytes"
+                    echo "Age: ${age_h:-n/a}"
+                    echo "Dumps in ${dir}: ${count}"
+                    echo
+                    echo "Manual run:"
+                    echo "  kubectl -n atlas create job --from=cronjob/atlas-db-backup atlas-db-backup-manual"
+                  } > "$body"
+                  {
+                    printf '{"from":'
+                    printf '%s' "$ALERT_FROM" | jstr
+                    printf ',"to":'
+                    printf '%s' "$ALERT_TO" | jstr
+                    printf ',"subject":"[atlas] database backup problem","text":'
+                    jstr < "$body"
+                    printf '}\n'
+                  } > "$json"
+
+                  # Idempotency-Key: a manual re-run the same day does not send a duplicate.
+                  code=$(curl -sS -o /tmp/resend.out -w '%{http_code}' --max-time 30 \
+                    --retry 3 --retry-all-errors --retry-delay 5 \
+                    -X POST https://api.resend.com/emails \
+                    -H "Authorization: Bearer ${RESEND_API_KEY}" \
+                    -H 'Content-Type: application/json' \
+                    -H "Idempotency-Key: atlas-backup-watchdog-$(date -u +%Y%m%d)" \
+                    --data-binary @"$json") || code=000
+                  case "$code" in
+                    2??) echo "alert emailed to ${ALERT_TO}" >&2 ;;
+                    *) echo "ERROR: Resend returned HTTP ${code}: $(cat /tmp/resend.out 2>/dev/null)" >&2 ;;
+                  esac
+                  # Exit 1 either way: the problem is real, and the Job should show Failed.
+                  exit 1
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 70
+                runAsGroup: 70
+                allowPrivilegeEscalation: false
+                seccompProfile:
+                  type: RuntimeDefault
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 10m
+                  memory: 32Mi
+                limits:
+                  memory: 64Mi
+          volumes:
+            - name: backups
+              persistentVolumeClaim:
+                claimName: atlas-db-backups
