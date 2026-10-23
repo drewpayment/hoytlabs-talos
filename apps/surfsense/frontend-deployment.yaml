@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/modsetter/surfsense-web:0.0.39
+          image: ghcr.io/modsetter/surfsense-web:0.0.40
           ports:
             - containerPort: 3000
           # Explicit rather than envFrom the shared ConfigMap: upstream's compose

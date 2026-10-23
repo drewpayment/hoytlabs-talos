@@ -40,6 +40,6 @@ resources:
 # rather than anywhere obvious.
 images:
   - name: ghcr.io/modsetter/surfsense-backend
-    newTag: "0.0.39"
+    newTag: "0.0.40"
   - name: ghcr.io/modsetter/surfsense-web
-    newTag: "0.0.39"
+    newTag: "0.0.40"
